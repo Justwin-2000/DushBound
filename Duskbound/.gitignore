@@ -1,0 +1,9 @@
+dist/
+android/build/
+android/keys/
+node_modules/
+releases/*.apk
+releases/*.idsig
+releases/*.sha256
+tests/output/
+*.tmp

@@ -1,0 +1,15 @@
+{
+  "name": "duskbound-embers",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build": "node tools/build.mjs",
+    "start": "node tools/serve.mjs"
+  },
+  "description": "暮边镇：余烬初巡 — offline Android action RPG",
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

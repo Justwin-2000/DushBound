@@ -1,0 +1,11 @@
+Generation mode: Built-in image_gen
+
+Use case: stylized-concept
+Asset type: premium pixel-art mobile game title-screen background, landscape composition 16:9.
+Primary request: An original dark-fantasy village called Duskbound at twilight. A richly detailed, atmospheric pixel-art establishing scene, no words or interface.
+Scene/backdrop: muted deep navy and dusky purple sky over a remote border village, a worn old windmill on the distant ridge, a warm timber-and-stone inn with amber glowing windows to the right, a stone town square containing a modest ancient boundary-lantern beacon. A path leads into the village. Gentle mist unifies the layers.
+Subject: In the lower-right foreground, a solitary border ranger seen from behind, wearing a dark short cloak, carrying a sheathed sword at the hip and a small glowing amber hand lantern. The ranger occupies only about one quarter of image height so the village remains expansive.
+Style/medium: exquisite handcrafted 2D pixel art with clear deliberate pixel clusters, detailed environmental storytelling, restrained dithered gradients, painterly composition expressed entirely through pixels; an original independent game world, refined and cinematic.
+Composition/framing: wide landscape, dark quiet sky and misty negative space across the upper-left and center-left 45 percent reserved for a title added later. The detailed focal village, warm windows, lamp beacon, and ranger live predominantly right of center; a dark irregular grass and stone silhouette frames the bottom. Strong depth and cohesive perspective.
+Lighting/mood: blue-hour melancholy, a fragile welcoming refuge at the edge of an unknown wilderness; amber illumination contrasts with low-saturation blue-purple dusk. Light should illuminate nearby stone realistically.
+Constraints: no text, no letters, no logos, no UI, no borders, no watermark. No existing game intellectual property, no anime portrait, no photorealism, no smooth 3D surfaces. Generate one polished finished background image.
