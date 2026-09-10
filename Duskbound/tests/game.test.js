@@ -346,3 +346,41 @@ test('房间 2：清场后推开板墙，断桥那一房的侵蚀增长减半', 
   control.nextRoom();
   assert.equal(control.s.run.corruption, plain + 10, '没开板墙就是原本的 +10');
 });
+
+// —— 1.2.2 把探索与事件铺到房间 3-5 ——
+test('断桥：沿断口下到河床只能拿一次灰铁', () => {
+  const g = expedition();
+  for (let room = 0; room < 2; room++) { killRoom(g); assert.equal(g.nextRoom(), true); }
+  assert.equal(g.s.run.room, 2);
+  const before = g.s.inventory.iron;
+  g.interactWith('ledge'); g.dialog = null;
+  assert.equal(g.s.run.ledgeSeen, true);
+  assert.equal(g.s.inventory.iron, before + 2);
+  g.interactWith('ledge'); g.dialog = null;
+  assert.equal(g.s.inventory.iron, before + 2, '第二次只应给提示，不再给物资');
+});
+test('营火房：士兵的背囊只能翻一次，满药时折算旧币', () => {
+  const g = expedition();
+  for (let room = 0; room < 3; room++) { killRoom(g); assert.equal(g.nextRoom(), true); }
+  assert.equal(g.s.run.room, 3);
+  const potions = g.player.potions, coins = g.s.inventory.coins;
+  g.interactWith('pack'); g.dialog = null;
+  assert.equal(g.s.run.packSearched, true);
+  assert.ok(g.player.potions > potions || g.s.inventory.coins > coins, '应当给药剂，满了则折算旧币');
+  const after = g.player.potions;
+  g.interactWith('pack'); g.dialog = null;
+  assert.equal(g.player.potions, after, '第二次不该再给');
+});
+test('麦田：清场后扶起稻草人，风车下层侵蚀增长减 5', () => {
+  const g = expedition();
+  for (let room = 0; room < 4; room++) { killRoom(g); assert.equal(g.nextRoom(), true); }
+  assert.equal(g.s.run.room, 4);
+  assert.equal(g.interactables().some(p => p.id === 'scarecrow'), false, '没清场就没有稻草人交互点');
+  killRoom(g);
+  assert.equal(g.interactables().some(p => p.id === 'scarecrow'), true);
+  g.interactWith('scarecrow'); g.dialog = null;
+  assert.equal(g.s.run.scarecrowUp, true);
+  const before = g.s.run.corruption;
+  assert.equal(g.nextRoom(), true); assert.equal(g.s.run.room, 5);
+  assert.equal(g.s.run.corruption, before + 15, '风车下层本应 +20，走过麦茬减 5');
+});

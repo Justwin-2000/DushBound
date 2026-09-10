@@ -133,6 +133,7 @@ function legacyV1Save() {
   s.saveVersion = 1;
   delete s.flags.letter; delete s.flags.letterGiven;
   delete s.run.signState; delete s.run.bypassUsed; delete s.run.doorOpened;
+  delete s.run.ledgeSeen; delete s.run.packSearched; delete s.run.scarecrowUp;
   return s;
 }
 test('1.1.x 老存档（无家书与路牌字段）能迁移到当前版本，且不改动既有进度', () => {
@@ -146,6 +147,9 @@ test('1.1.x 老存档（无家书与路牌字段）能迁移到当前版本，�
   assert.equal(restored.run.signState, 0);
   assert.equal(restored.run.bypassUsed, false);
   assert.equal(restored.run.doorOpened, false);
+  assert.equal(restored.run.ledgeSeen, false);
+  assert.equal(restored.run.packSearched, false);
+  assert.equal(restored.run.scarecrowUp, false);
   assert.equal(restored.player.hp, 63, '迁移不得改动既有进度');
   assert.equal(restored.inventory.coins, 17);
   assert.equal(restored.stage, 7);

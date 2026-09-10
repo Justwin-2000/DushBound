@@ -3,7 +3,7 @@ import { SaveStore, decodeSave } from './store.js';
 import { Renderer } from './renderer.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
-import { DEFAULT_SETTINGS, QUESTS, PLACES, ROOMS, ENDINGS } from './data.js';
+import { DEFAULT_SETTINGS, QUESTS, PLACES, ROOMS, ENDINGS, PRICES } from './data.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paths={
@@ -32,7 +32,7 @@ $('map-button').innerHTML=icon('map');$('bag-button').innerHTML=icon('bag');$('p
 for(const [id,name]of [['attack','sword'],['block','shield'],['dodge','dodge']])$(id).querySelector('.action-icon').innerHTML=icon(name);
 let storage;try{storage=window.localStorage;}catch{storage={getItem(){throw Error();},setItem(){throw Error();},removeItem(){}};}
 const store=new SaveStore(storage),sound=new Sound(),renderer=new Renderer($('world'));
-let saved=store.load(),game=null,onTitle=true,menu=null,dialogIndex=0,currentDialog=null,regionTimer=null,hudLast='',lastFrame=0,accumulator=0,settings={...DEFAULT_SETTINGS,...saved?.settings},saveErrorShown=false,restoreFocus=null;
+let saved=store.load(),game=null,onTitle=true,menu=null,dialogIndex=0,currentDialog=null,regionTimer=null,hudLast='',lastFrame=0,accumulator=0,settings={...DEFAULT_SETTINGS,...saved?.settings},saveErrorShown=false,restoreFocus=null,lastBackExit=-1e9;
 try{const raw=JSON.parse(storage.getItem('duskbound.settings')||'null');if(raw)for(const k in DEFAULT_SETTINGS){const v=raw[k];if(typeof v!==typeof DEFAULT_SETTINGS[k])continue;if(typeof v==='boolean')settings[k]=v;else if(k==='fps'&&[30,60].includes(v))settings[k]=v;else if(k!=='fps'&&Number.isFinite(v)&&v>=(k==='controls'?.2:0)&&v<=1)settings[k]=v;}}catch{}
 const input=new Input(()=>onTitle?null:game,togglePause,()=>{if(currentDialog){advanceDialog();}else if(!menu)game?.interact();},sound);
 function applySettings(){sound.settings=settings;document.documentElement.style.setProperty('--control-opacity',settings.controls);if(game)game.s.settings={...settings};}
@@ -55,12 +55,12 @@ function openMenu(name){const s=game?.s||saved,p=s?.player;let html='',title='';
     html=`<div class="menu-grid">${items.map(([n,i,t,k])=>`<button data-ui="${n}">${icon(i)}<span>${t}</span><small>${k}</small></button>`).join('')}${s.scene==='dungeon'?`<button class="wide" data-ui="confirm-retreat">${icon('gate')}安全撤回小镇<small>保留已得物资</small></button>`:''}</div><div class="menu-meta"><span>${s.scene==='town'?'暮边镇':ROOMS[s.run.room].name}</span><span>旅程 ${Math.floor(s.playTime/60)} 分钟</span><span>单人 · 自动保存</span></div>`;
   }else if(name==='inventory'){
     title='巡界者的行囊';html=`<span class="section-label">消耗品</span>${item('potion','恢复药剂','恢复 35 生命；饮用过程中受击会打断，药剂保留。',`×${p.potions}`,p.potions&&p.hp<p.maxHp?'<button class="small-button" data-ui="use-potion">使用</button>':'')}${item('leaf','苦叶膏','涂抹后，下一次房间侵蚀增长减少 10。',`×${s.inventory.salve}`,s.inventory.salve&&!s.run.salveUsed?'<button class="small-button" data-ui="use-salve">涂抹</button>':'')}
-      <span class="section-label" style="margin-top:25px">材料与货币</span>${item('coin','旧币','原野里的旧时代货币。',s.inventory.coins)}${item('iron','灰铁','收集 6 块可请格伦强化长剑一次。',s.inventory.iron)}${item('leaf','苦叶','药草屋可免费将一份苦叶制成苦叶膏。',s.inventory.leaf)}
+      <span class="section-label" style="margin-top:25px">材料与货币</span>${item('coin','旧币','原野里的旧时代货币。',s.inventory.coins)}${item('iron','灰铁',`收集 ${PRICES.upgradeIron} 块可请格伦强化长剑一次。`,s.inventory.iron)}${item('leaf','苦叶','药草屋可免费将一份苦叶制成苦叶膏。',s.inventory.leaf)}
       ${s.flags.core||s.flags.tag||s.flags.log?'<span class="section-label" style="margin-top:25px">关键物品 · 永久保留</span>':''}${s.flags.core?item('lamp','黯淡核心','尚有余温。界灯正在等待它。',''):''}${s.flags.tag?item('tag','艾琳的军牌','一个名字，和一个尚未被说出的故事。',''):''}${s.flags.log?item('book','士兵日志','艾琳说，风车的灯昨晚自己亮了。',''):''}`;
   }else if(name==='equipment'){
     title='剑与提灯';html=`${item('sword',p.weapon?'巡界长剑 · 已强化':'巡界长剑','旧刃仍有分量。三段攻击，最后一击最重。',p.weapon?'Ⅰ':'')}${item('cloak',s.flags.cloak?'旧巡界斗篷':'旧皮甲',s.flags.cloak?'伊妲替你缝好了领口。生命上限 +10。':'去旅店找伊妲，取回她保管的斗篷。','')}<div class="stat-grid"><div><small>攻击</small><b>${p.weapon?15:12}</b></div><div><small>防御</small><b>2</b></div><div><small>生命上限</small><b>${p.maxHp}</b></div></div><p>装备随身携带，无需反复装卸。</p>${!p.weapon?`<div class="notice">格伦的锻造 · 需要灰铁 6 块，现有 ${s.inventory.iron} 块。强化后攻击提升至 15。</div><button class="primary" data-ui="upgrade" ${s.scene!=='town'||s.inventory.iron<6?'disabled':''}>${s.scene!=='town'?'返回小镇后可强化':'请格伦强化长剑'} <span>6 灰铁</span></button>`:'<div class="notice">这把剑已经磨得足够锋利。剩下的，要靠握剑的人。</div>'}`;
   }else if(name==='shop'){
-    title='米洛的补给';html=`<div class="menu-meta" style="margin:0 0 21px"><span>出发前，把背包再检查一遍。</span><span>旧币 ${s.inventory.coins}</span></div>${item('potion','恢复药剂','每瓶恢复 35 生命，最多携带 3 瓶。',`${p.potions}/3`,`<button class="small-button" data-buy="potion" ${p.potions>=3||s.inventory.coins<8?'disabled':''}>8 旧币</button>`)}${item('leaf','苦叶膏','下一个产生侵蚀的房间，增长减少 10。',`${s.inventory.salve}/1`,`<button class="small-button" data-buy="salve" ${s.inventory.salve||s.inventory.coins<5?'disabled':''}>5 旧币</button>`)}${item('leaf','调制苦叶膏','用一份苦叶，请米洛免费调制。',`${s.inventory.leaf} 叶`,`<button class="small-button" data-buy="craft" ${!s.inventory.leaf||s.inventory.salve?'disabled':''}>调制</button>`)}<div class="notice">旅店可免费恢复生命，并将药剂补至两瓶。米洛首次见面还会赠送一瓶。</div>`;
+    title='米洛的补给';html=`<div class="menu-meta" style="margin:0 0 21px"><span>出发前，把背包再检查一遍。</span><span>旧币 ${s.inventory.coins}</span></div>${item('potion','恢复药剂','每瓶恢复 35 生命，最多携带 3 瓶。',`${p.potions}/3`,`<button class="small-button" data-buy="potion" ${p.potions>=3||s.inventory.coins<PRICES.potion?'disabled':''}>${PRICES.potion} 旧币</button>`)}${item('leaf','苦叶膏','下一个产生侵蚀的房间，增长减少 10。',`${s.inventory.salve}/1`,`<button class="small-button" data-buy="salve" ${s.inventory.salve||s.inventory.coins<PRICES.salve?'disabled':''}>${PRICES.salve} 旧币</button>`)}${item('leaf','调制苦叶膏','用一份苦叶，请米洛免费调制。',`${s.inventory.leaf} 叶`,`<button class="small-button" data-buy="craft" ${!s.inventory.leaf||s.inventory.salve?'disabled':''}>调制</button>`)}<div class="notice">旅店可免费恢复生命，并将药剂补至两瓶。米洛首次见面还会赠送一瓶。</div>`;
   }else if(name==='map'){
     title=s.scene==='town'?'暮边镇街道':'灰风原野';if(s.scene==='town'){html=`<p>从西向东，一条被灯火照亮的街道。</p><div class="map-list">${PLACES.map((v,i)=>`<div class="map-stop"><span>0${i+1}</span>${icon(v.icon)}<strong>${v.name}</strong><small>${Math.abs(p.x-v.x)<400?'当前附近':''}</small><button class="small-button" data-travel="${v.x}" ${s.tutorial.active?'disabled':''}>前往</button></div>`).join('')}</div>${s.tutorial.active?'<div class="notice">训练中请先留在木桩旁。完成训练后可使用街道导航。</div>':'<div class="notice">可步行探索，也可点「前往」快速到达。东门会检查你的远征准备。</div>'}`;}else{html=`<div class="map-list">${ROOMS.map((v,i)=>`<div class="map-stop"><span>0${i+1}</span>${icon(i===3?'lamp':i===6?'shield':'map')}<strong>${v.name}</strong><small>${i<s.run.room?'已通过':i===s.run.room?(s.run.clear?'道路已开启':'所在区域'):'尚未抵达'}</small></div>`).join('')}</div><p>清除当前区域全部敌人，右侧道路才会开放。旧营火可以休息一次。</p>`;}
   }else if(name==='journal'){
@@ -89,14 +89,22 @@ function processEvents(){if(!game)return;let save=false;for(const e of game.drai
     $('region-title').textContent=e.name;$('region-subtitle').textContent=e.subtitle;$('region').classList.add('hidden');void $('region').offsetWidth;$('region').classList.remove('hidden');clearTimeout(regionTimer);regionTimer=setTimeout(()=>$('region').classList.add('hidden'),3400);
   }}if(save)saveGame();
 }
+// HUD 每帧都会刷新，但绝大多数值并不变。这里按值缓存，只在真正变化时才写 DOM，
+// 避免每帧十几次 textContent / style 赋值带来的无谓重排。
+const hudCache={};
+const hudText=(id,value)=>{if(hudCache[id]===value)return;hudCache[id]=value;$(id).textContent=value;};
+const hudWidth=(id,value)=>{if(hudCache[id]===value)return;hudCache[id]=value;$(id).style.width=value;};
+const hudFlag=(id,value)=>{if(hudCache[id]===value)return;hudCache[id]=value;$(id).classList.toggle('hidden',value);};
+const hudStyle=(id,prop,value)=>{const k=id+'.'+prop;if(hudCache[k]===value)return;hudCache[k]=value;$(id).style[prop]=value;};
 function refreshHud(){if(!game||onTitle)return;const s=game.s,p=s.player,r=s.run,boss=s.enemies.find(e=>e.kind==='boss'),near=game.nearby();
-  $('hp-text').textContent=`${Math.ceil(p.hp)} / ${p.maxHp}`;$('hp-fill').style.width=p.hp/p.maxHp*100+'%';$('stamina-fill').style.width=p.stamina+'%';$('corruption-fill').style.width=r.corruption+'%';$('corruption-text').textContent=r.corruption;$('potion-count').textContent=p.potions;$('corruption-row').classList.toggle('hidden',s.scene!=='dungeon');$('boss-hud').classList.toggle('hidden',!boss);
-  if(boss){$('boss-fill').style.width=boss.hp/620*100+'%';$('boss-value').textContent=Math.ceil(boss.hp)+' / 620';$('boss-phase').textContent=boss.phase===2?'Ⅱ · 灯灭之时':'Ⅰ · 最后的命令';}
-  const key=[s.scene,r.room,s.stage,s.ending,Math.floor(p.x/500)].join(':');if(key!==hudLast){hudLast=key;$('quest-text').textContent=QUESTS[s.stage];$('place-name').textContent=s.scene==='town'?'暮边镇':ROOMS[r.room].name;$('place-subtitle').textContent=s.scene==='town'?(s.ending?'余烬已燃':'黄昏 · 界灯尚明'):`灰风原野 · ${r.room+1} / 7`;$('room-dots').innerHTML=s.scene==='dungeon'?ROOMS.map((_,i)=>`<i class="${i<=r.room?'done':''}"></i>`).join(''):'';}
-  $('coins-text').textContent='旧币 '+s.inventory.coins;$('iron-text').textContent='灰铁 '+s.inventory.iron;$('tutorial').classList.toggle('hidden',!s.tutorial.active);if(s.tutorial.active)$('tutorial-text').textContent=game.tutorialHint();
-  $('interact').classList.toggle('hidden',!near||!!menu||!!currentDialog);if(near)$('interact-label').textContent=near.label;
-  $('attack').style.opacity=p.stamina<8?.5:1;$('dodge').style.opacity=p.stamina<24||game.p.dodgeCooldown>0?.5:1;
-  const controlVisible=!onTitle&&!currentDialog&&!menu;$('touch-controls').style.visibility=controlVisible?'visible':'hidden';
+  hudText('hp-text',`${Math.ceil(p.hp)} / ${p.maxHp}`);hudWidth('hp-fill',p.hp/p.maxHp*100+'%');hudWidth('stamina-fill',p.stamina+'%');hudWidth('corruption-fill',r.corruption+'%');hudText('corruption-text',r.corruption);hudText('potion-count',p.potions);hudFlag('corruption-row',s.scene!=='dungeon');hudFlag('boss-hud',!boss);
+  // 首领血量上限取自实例（spawn 时由 ENEMIES.boss.hp 写入），不再硬编码 620。
+  if(boss){const max=boss.maxHp;hudWidth('boss-fill',boss.hp/max*100+'%');hudText('boss-value',Math.ceil(boss.hp)+' / '+max);hudText('boss-phase',boss.phase===2?'Ⅱ · 灯灭之时':'Ⅰ · 最后的命令');}
+  const key=[s.scene,r.room,s.stage,s.ending,Math.floor(p.x/500)].join(':');if(key!==hudLast){hudLast=key;hudText('quest-text',QUESTS[s.stage]);hudText('place-name',s.scene==='town'?'暮边镇':ROOMS[r.room].name);hudText('place-subtitle',s.scene==='town'?(s.ending?'余烬已燃':'黄昏 · 界灯尚明'):`灰风原野 · ${r.room+1} / 7`);if(hudCache['room-dots']!==key){hudCache['room-dots']=key;$('room-dots').innerHTML=s.scene==='dungeon'?ROOMS.map((_,i)=>`<i class="${i<=r.room?'done':''}"></i>`).join(''):'';}}
+  hudText('coins-text','旧币 '+s.inventory.coins);hudText('iron-text','灰铁 '+s.inventory.iron);hudFlag('tutorial',!s.tutorial.active);if(s.tutorial.active)hudText('tutorial-text',game.tutorialHint());
+  hudFlag('interact',!near||!!menu||!!currentDialog);if(near)hudText('interact-label',near.label);
+  hudStyle('attack','opacity',p.stamina<8?.5:1);hudStyle('dodge','opacity',p.stamina<24||game.p.dodgeCooldown>0?.5:1);
+  hudStyle('touch-controls','visibility',!onTitle&&!currentDialog&&!menu?'visible':'hidden');
 }
 function importSave(raw){if(raw.length>1024*1024){showToast('存档文件过大，未导入');return;}let parsed;try{parsed=decodeSave(raw);}catch{showToast('存档无效或校验失败，当前旅程未改变',6000);return;}
   const buttonId='confirm-import';showModal('import-confirm','恢复备份',`<p>将恢复这份旅程：${esc(QUESTS[parsed.stage])}<br>所在位置：${parsed.scene==='town'?'暮边镇':ROOMS[parsed.run.room].name}<br>旅程时间：${Math.floor(parsed.playTime/60)} 分钟</p><div class="notice">确认后替换本机当前存档。</div><div class="button-row"><button class="secondary" data-ui="close">取消</button><button id="${buttonId}" class="primary">恢复这份旅程</button></div>`);
@@ -117,7 +125,14 @@ $('modal-body').addEventListener('click',e=>{const b=e.target.closest('button');
 });
 $('modal-body').addEventListener('input',e=>{const k=e.target.dataset.setting;if(!k)return;settings[k]=e.target.type==='checkbox'?e.target.checked:k==='fps'?Number(e.target.value):Number(e.target.value)/100;applySettings();try{storage.setItem('duskbound.settings',JSON.stringify(settings));}catch{}if(game)saveGame();else if(saved){saved.settings={...settings};store.save(saved);}});
 $('import-file').addEventListener('change',async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>1024*1024){showToast('存档文件过大，未导入');return;}try{importSave(await f.text());}catch{showToast('无法读取这个文件');}});
-window.addEventListener('native-import',e=>{if(typeof e.detail==='string')importSave(e.detail);});window.addEventListener('native-message',e=>{if(typeof e.detail==='string')showToast(e.detail);});window.addEventListener('native-back',()=>{if(onTitle&&!menu){openMenu('settings');}else togglePause();});
+window.addEventListener('native-import',e=>{if(typeof e.detail==='string')importSave(e.detail);});window.addEventListener('native-message',e=>{if(typeof e.detail==='string')showToast(e.detail);});window.addEventListener('native-back',()=>{
+  // 标题页不再把返回键吞掉：连按两次退出应用，符合安卓用户的习惯。
+  if(onTitle&&!menu){
+    const now=performance.now();
+    if(now-lastBackExit<1800){if(window.AndroidBridge?.exitApp)window.AndroidBridge.exitApp();else showToast('浏览器中请用标签页关闭');return;}
+    lastBackExit=now;showToast('再按一次返回键退出',2000);return;
+  }
+  togglePause();});
 function backgroundPause(){input.clear();if(game&&!onTitle){game.pause();processEvents();saveGame();if(!menu)openMenu('pause');}sound.suspend();accumulator=0;lastFrame=performance.now();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)backgroundPause();else{sound.unlock();lastFrame=performance.now();accumulator=0;}});window.addEventListener('native-pause',backgroundPause);window.addEventListener('native-resume',()=>{sound.unlock();lastFrame=performance.now();accumulator=0;});window.addEventListener('pagehide',backgroundPause);window.addEventListener('resize',()=>{renderer.resize();renderElapsed=1e9;if(window.innerWidth<window.innerHeight&&!onTitle)backgroundPause();});
 window.addEventListener('keydown',e=>{if(e.key==='Tab'&&menu){const focusable=[...$('modal-layer').querySelectorAll('button:not(:disabled),input,select')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});

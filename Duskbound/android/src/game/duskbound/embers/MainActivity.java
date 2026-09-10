@@ -415,6 +415,11 @@ public final class MainActivity extends Activity {
             });
         }
 
+        /** 标题页连按两次返回键时由 web 层调用：此前返回键在标题页只打开设置，等于退不出去。 */
+        @JavascriptInterface public void exitApp() {
+            runOnUiThread(new Runnable() { @Override public void run() { finish(); } });
+        }
+
         @JavascriptInterface public void vibrate(int milliseconds) {
             final int duration = Math.max(8, Math.min(100, milliseconds));
             runOnUiThread(new Runnable() {
@@ -424,12 +429,6 @@ public final class MainActivity extends Activity {
                         vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
                     }
                 }
-            });
-        }
-
-        @JavascriptInterface public void exitApp() {
-            runOnUiThread(new Runnable() {
-                @Override public void run() { finish(); }
             });
         }
     }

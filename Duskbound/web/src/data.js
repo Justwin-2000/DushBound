@@ -1,5 +1,7 @@
-export const VERSION = 2;
+export const VERSION = 3;
 export const PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
+// 商店与强化的价格集中在这里：此前 8/5/6 在 game.js 与界面文案里各写了一遍，改价容易漏改。
+export const PRICES = { potion: 8, salve: 5, upgradeIron: 6 };
 export const COMBO = [ { damage: 1, cost: 8, duration: .28, impact: .08 }, { damage: 1.1, cost: 9, duration: .3, impact: .1 }, { damage: 1.5, cost: 14, duration: .44, impact: .16 } ];
 export const ENEMIES = {
   rat: { name: '雾噬鼠', hp: 28, speed: 160, damage: 8, range: 70, windup: .35, recovery: .6, color: '#827a99' },

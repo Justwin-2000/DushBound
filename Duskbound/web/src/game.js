@@ -1,8 +1,8 @@
-import { VERSION, PLAYER, COMBO, ENEMIES, BOSS_MOVES, ROOMS, TOWN, QUESTS, ENDINGS, DEFAULT_SETTINGS } from './data.js';
+import { VERSION, PLAYER, PRICES, COMBO, ENEMIES, BOSS_MOVES, ROOMS, TOWN, QUESTS, ENDINGS, DEFAULT_SETTINGS } from './data.js';
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 export function damage(attack,mult=1,defense=0,roll=.5,critical=false) {const n=Math.max(1,Math.floor(attack*mult*(.95+roll*.1)-defense));return critical?Math.floor(n*1.5):n;}
-const freshRun=()=>({room:0,wave:0,corruption:0,startIron:0,rewarded:[],campUsed:false,chestUsed:false,won:false,clear:false,replay:false,salveUsed:false,signState:0,bypassUsed:false,doorOpened:false});
+const freshRun=()=>({room:0,wave:0,corruption:0,startIron:0,rewarded:[],campUsed:false,chestUsed:false,won:false,clear:false,replay:false,salveUsed:false,signState:0,bypassUsed:false,doorOpened:false,ledgeSeen:false,packSearched:false,scarecrowUp:false});
 export function newState(settings={}) {return {
   saveVersion:VERSION,scene:'town',stage:1,playTime:0,ending:null,
   player:{x:180,y:350,hp:100,maxHp:100,stamina:100,weapon:0,potions:2,facing:1},
@@ -76,6 +76,10 @@ export class Game {
     }
     if(r.room===0&&r.signState>=2)points.push({id:'bypass',x:250,y:410,label:'沿旧车辙绕行'});
     if(r.room===3)points.push({id:'camp',x:710,y:330,label:r.campUsed?'营火已熄':'使用营火'});
+    // 断桥：探索（沿断口下到河床）；营火：事件（士兵的背囊）；麦田：清场后的场景变化（扶起稻草人）
+    if(r.room===2)points.push({id:'ledge',x:250,y:410,label:r.ledgeSeen?'断口边缘':'沿断口的边缘往下看'});
+    if(r.room===3)points.push({id:'pack',x:980,y:330,label:r.packSearched?'翻过的背囊':'翻找士兵的背囊'});
+    if(r.room===4&&r.clear)points.push({id:'scarecrow',x:520,y:300,label:r.scarecrowUp?'站起来的稻草人':'扶起倒下的稻草人'});
     if(r.room===5&&r.clear)points.push({id:'chest',x:1080,y:310,label:r.chestUsed?'空补给箱':'开启补给箱'});
     if(r.clear)points.push({id:'exit',x:1400,y:350,label:r.room===6?'返回暮边镇':'前往下一区域'});
     return points;
@@ -128,29 +132,47 @@ export class Game {
       this.talk('农舍后墙',['你把松动的板墙推开，墙后是一条直下河谷的兽径。','从这里走，能少绕一段雾最浓的路。'],[{text:'记住这条近路',action:'close'}]);
       this.save();
     }
+    else if(id==='ledge'){
+      if(s.run.ledgeSeen){this.toast('断口下面的河床还是老样子。');return;}
+      s.run.ledgeSeen=true;s.inventory.iron=clamp(s.inventory.iron+2,0,999);this.sound('item');
+      this.talk('断桥的边缘',['你贴着断口往下看。河床干了很多年，碎石里卡着半辆商队的推车。','车厢散了，铁件还在。你捡了两块灰铁上来。','对岸的脚印还在往雾里走。'],[{text:'收好灰铁',action:'close'}]);
+      this.save();
+    }
+    else if(id==='pack'){
+      if(s.run.packSearched){this.toast('背囊已经翻空了。');return;}
+      s.run.packSearched=true;this.addPotion(1,true);this.sound('item');
+      this.talk('士兵的背囊',['背囊靠着石头，像是有人坐下之后就再没起来。','里面有一瓶封好的药，和一张被雨泡开的纸。','「艾琳说，风车的灯昨晚自己亮了。」后面还有半句，已经看不清了。'],[{text:'收好药剂',action:'close'}]);
+      this.save();
+    }
+    else if(id==='scarecrow'){
+      if(s.run.scarecrowUp){this.toast('稻草人立着，面朝风车。');return;}
+      s.run.scarecrowUp=true;this.sound('quest');
+      this.talk('倒下的稻草人',['你把稻草人扶起来，让它重新面朝风车。','麦茬被压出一条清楚的路——从这里下风车，能少绕一段雾最浓的坡。'],[{text:'记住这条路',action:'close'}]);
+      this.save();
+    }
     else if(id==='camp'){if(s.run.campUsed)this.toast('余温还在，但已经不能再为提灯添火。');else this.talk('旧营火',['火还没有熄。你可以让身体暖起来，或为提灯净去灰雾。'],[{text:'休憩 · 恢复 40 生命',action:'healCamp'},{text:'净化 · 侵蚀降低 15',action:'cleanseCamp'}]);}
     else if(id==='chest'){if(s.run.chestUsed)this.toast('补给箱已经空了。');else {s.run.chestUsed=true;this.addPotion(1,true);s.inventory.iron=clamp(s.inventory.iron+2,0,999);this.toast('补给箱 · 灰铁 +2');this.save();}}
     else if(id==='exit'){if(s.run.room===6)this.returnTown();else this.nextRoom();}
   }
   rest(){this.player.hp=this.player.maxHp;this.player.potions=Math.max(2,this.player.potions);this.player.stamina=100;this.sound('heal');this.toast('休息完毕 · 生命恢复，药剂已补给');this.save();}
-  addPotion(n,convert=false){const added=Math.min(3-this.player.potions,n),extra=n-added;this.player.potions+=added;if(extra&&convert){this.s.inventory.coins=clamp(this.s.inventory.coins+extra*8,0,999);this.toast('药剂已满 · 多余药剂转为 '+extra*8+' 旧币');}else if(added)this.toast('恢复药剂 +'+added);}
+  addPotion(n,convert=false){const added=Math.min(3-this.player.potions,n),extra=n-added;this.player.potions+=added;if(extra&&convert){this.s.inventory.coins=clamp(this.s.inventory.coins+extra*PRICES.potion,0,999);this.toast('药剂已满 · 多余药剂转为 '+extra*PRICES.potion+' 旧币');}else if(added)this.toast('恢复药剂 +'+added);}
   buy(item){
     const s=this.s;if(s.scene!=='town')return false;
-    if(item==='potion'){if(this.player.potions>=3){this.toast('最多携带 3 瓶药剂');return false;}if(s.inventory.coins<8){this.toast('旧币不足');return false;}s.inventory.coins-=8;this.player.potions++;}
-    else if(item==='salve'){if(s.inventory.salve){this.toast('已有一份苦叶膏');return false;}if(s.inventory.coins<5){this.toast('旧币不足');return false;}s.inventory.coins-=5;s.inventory.salve=1;}
+    if(item==='potion'){if(this.player.potions>=3){this.toast('最多携带 3 瓶药剂');return false;}if(s.inventory.coins<PRICES.potion){this.toast('旧币不足');return false;}s.inventory.coins-=PRICES.potion;this.player.potions++;}
+    else if(item==='salve'){if(s.inventory.salve){this.toast('已有一份苦叶膏');return false;}if(s.inventory.coins<PRICES.salve){this.toast('旧币不足');return false;}s.inventory.coins-=PRICES.salve;s.inventory.salve=1;}
     else if(item==='craft'){if(!s.inventory.leaf||s.inventory.salve){this.toast('需要苦叶，且只能携带一份苦叶膏');return false;}s.inventory.leaf--;s.inventory.salve=1;}
     else return false;
     this.sound('item');this.toast(item==='potion'?'药剂已放入行囊':'苦叶膏已放入行囊');this.save();return true;
   }
-  upgrade(){if(this.s.scene!=='town'||this.player.weapon||this.s.inventory.iron<6){this.toast(this.player.weapon?'长剑已完成强化':'强化需要 6 块灰铁');return false;}this.s.inventory.iron-=6;this.player.weapon=1;this.sound('quest');this.toast('长剑强化完成 · 攻击 12 → 15');this.save();return true;}
+  upgrade(){if(this.s.scene!=='town'||this.player.weapon||this.s.inventory.iron<PRICES.upgradeIron){this.toast(this.player.weapon?'长剑已完成强化':'强化需要 '+PRICES.upgradeIron+' 块灰铁');return false;}this.s.inventory.iron-=PRICES.upgradeIron;this.player.weapon=1;this.sound('quest');this.toast('长剑强化完成 · 攻击 12 → 15');this.save();return true;}
   useSalve(){if(!this.s.inventory.salve){this.toast('没有苦叶膏');return false;}if(this.s.run.salveUsed){this.toast('苦叶膏已涂抹，会在下一次侵蚀增长时生效');return false;}this.s.inventory.salve--;this.s.run.salveUsed=true;this.toast('提灯已涂抹苦叶膏 · 下次侵蚀增长 −10');this.save();return true;}
   useCamp(kind){if(this.s.scene!=='dungeon'||this.s.run.room!==3||this.s.run.campUsed)return false;this.s.run.campUsed=true;if(kind==='heal'){this.player.hp=Math.min(this.player.maxHp,this.player.hp+40);this.toast('营火休憩 · 生命 +40');}else{this.s.run.corruption=Math.max(0,this.s.run.corruption-15);this.toast('提灯净化 · 侵蚀 −15');}this.sound('heal');this.save();return true;}
   enterDungeon(){if(this.s.stage<5||this.s.scene!=='town')return false;const salve=this.s.run.salveUsed;this.s.run=freshRun();this.s.run.startIron=this.s.inventory.iron;this.s.run.replay=!!this.s.ending;this.s.run.salveUsed=salve;this.s.scene='dungeon';this.s.tutorial.active=false;this.setStage(6);this.loadRoom(0);return true;}
   spawn(kind,x=880,y=320,hp=null){const cfg=ENEMIES[kind];const e={id:this.id++,kind,x,y,hp:hp??cfg.hp,maxHp:hp??cfg.hp,state:'chase',timer:0,facing:-1,move:'sweep',history:[],phase:1,transitioned:false,summoned:false,parries:0,attackCount:0,tx:0,ty:0,flash:0,chargeStep:0};this.s.enemies.push(e);return e;}
   loadRoom(i){
     const r=this.s.run,cfg=ROOMS[i];r.room=i;r.wave=0;r.clear=cfg.waves.length===0;r.won=false;
-    // 苦叶膏减 10；从农舍板墙后的兽径下来能少绕一段雾最浓的路，断桥那一房再减 5。
-    const relief=(r.salveUsed?10:0)+(i===2&&r.doorOpened?5:0);
+    // 苦叶膏减 10；农舍兽径让断桥减 5；麦田的稻草人让风车下层再减 5。
+    const relief=(r.salveUsed?10:0)+(i===2&&r.doorOpened?5:0)+(i===5&&r.scarecrowUp?5:0);
     r.corruption=clamp(r.corruption+Math.max(0,cfg.corruption-relief),0,100);if(cfg.corruption&&r.salveUsed)r.salveUsed=false;
     this.s.enemies=[];this.projectiles=[];this.fields=[];this.effects=[];this.resetMotion();this.player.x=160;this.player.y=350;this.player.stamina=100;this.p.invincible=1;
     this.spawnWave();if(i===6)this.setStage(7);this.toast(cfg.name+' · '+cfg.hint);this.emit('region',{name:cfg.name,subtitle:cfg.subtitle});this.save();

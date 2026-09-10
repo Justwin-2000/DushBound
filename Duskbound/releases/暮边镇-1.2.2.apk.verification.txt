@@ -1,8 +1,8 @@
-﻿APK: 暮边镇-1.2.1.apk
-Version: 1.2.1 (11)
-Built UTC: 2026-09-10T08:36:55
+﻿APK: 暮边镇-1.2.2.apk
+Version: 1.2.2 (12)
+Built UTC: 2026-09-10T08:38:10
 Assets: D:\Workspace\Deepseek_dsh\Dush\Duskbound\web
-SHA256: fc15b449ed34726bf777449e6a9406237e18b9951acb997e20a564746c66d692
+SHA256: 40031374883f02e9d4152ab09717de0221bea04d86894746ba274b7a03fd0899
 
 SIGNATURE
 Verifies
@@ -24,7 +24,7 @@ Signer #1 public key SHA-1 digest: bd229a2155f2a6a177c324f08ade1757f8481470
 Signer #1 public key MD5 digest: e10a659343e8e4ab33aa903344b52771
 
 MANIFEST
-package: name='game.duskbound.embers' versionCode='11' versionName='1.2.1' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
+package: name='game.duskbound.embers' versionCode='12' versionName='1.2.2' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
 minSdkVersion:'26'
 targetSdkVersion:'35'
 uses-permission: name='android.permission.VIBRATE'

@@ -2,10 +2,13 @@ import { TOWN, ROOMS, ENEMIES, BOSS_MOVES, COMBO } from './data.js';
 import { clamp } from './game.js';
 const hash=n=>{const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x);};
 export class Renderer {
-  constructor(canvas){this.canvas=canvas;this.c=canvas.getContext('2d',{alpha:false});if(!this.c)throw Error('此设备无法创建游戏画布');this.w=960;this.h=540;this.camera=0;this.shake=0;this.artCache=new Map();this.gradients=new Map();this.glowCache=new Map();this.shadeCache=null;this.scenery=new Image();this.scenery.src='./assets/world.webp';this.resize();}
-  resize(){const rect=this.canvas.getBoundingClientRect();this.w=Math.max(640,Math.round(540*rect.width/Math.max(1,rect.height)));this.canvas.width=this.w;this.canvas.height=540;this.c.imageSmoothingEnabled=false;this.gradients.clear();}
-  rect(x,y,w,h,color){this.c.fillStyle=color;this.c.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));}
-  poly(points,color){const c=this.c;c.fillStyle=color;c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill();}
+  constructor(canvas){this.canvas=canvas;this.c=canvas.getContext('2d',{alpha:false});if(!this.c)throw Error('此设备无法创建游戏画布');this.w=960;this.h=540;this.camera=0;this.shake=0;this.artCache=new Map();this.gradients=new Map();this.glowCache=new Map();this.shadeCache=null;this.ink=null;this.sprites=null;this.spriteImage=null;this.scenery=new Image();this.scenery.src='./assets/world.webp';this.resize();}
+  resize(){const rect=this.canvas.getBoundingClientRect();this.w=Math.max(640,Math.round(540*rect.width/Math.max(1,rect.height)));this.canvas.width=this.w;this.canvas.height=540;this.c.imageSmoothingEnabled=false;this.gradients.clear();this.loadSprites();}
+  // ink 非空时只画「向外扩 1px 的深色剪影」，用于给角色描边。
+  // 描边是像素风里保证角色在任意背景上都可读的关键手段。
+  rect(x,y,w,h,color){const c=this.c;if(this.ink){c.fillStyle=this.ink;c.fillRect(Math.round(x)-1,Math.round(y)-1,Math.ceil(w)+2,Math.ceil(h)+2);return;}c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));}
+  poly(points,color){const c=this.c;c.fillStyle=this.ink||color;c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill();if(this.ink){c.lineWidth=2;c.strokeStyle=this.ink;c.stroke();}}
+  inkPass(draw){const previous=this.ink;this.ink='#0a0e15e0';for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){this.c.save();this.c.translate(dx,dy);draw();this.c.restore();}this.ink=previous;}
   text(text,x,y,size=13,color='#e8dfc5',align='center'){const c=this.c;c.font=`${size}px "Microsoft YaHei", sans-serif`;c.fillStyle=color;c.textAlign=align;c.fillText(text,Math.round(x),Math.round(y));}
   // 每帧重建渐变是这里最大的固定开销：渐变对象按 (场景/画布宽) 缓存复用；
   // 光晕则预渲染成离屏精灵，用 drawImage 贴图取代「新建径向渐变 + 整块 alpha 填充」。
@@ -120,7 +123,11 @@ export class Renderer {
       }
     }
     else if(theme==='mill'){this.rect(510,110,500,180,'#484650');for(let k=0;k<7;k++)this.rect(520,120+k*23,480,3,'#383b46');this.rect(710,191,130,105,'#252b34');this.rect(740,216,8,63,'#777079');this.rect(789,216,8,63,'#777079');}
-    else {for(let i=0;i<12;i++){const x=i*127;if(this.visible(x,100))this.tree(x,285,.8+hash(i)*.9);}if(theme==='wheat'){for(let i=0;i<100;i++){const x=hash(i)*1500,y=235+hash(i+9)*55;this.rect(x,y,2,30,'#797464');this.rect(x-3,y,8,12,'#99907b');}}}
+    else {for(let i=0;i<12;i++){const x=i*127;if(this.visible(x,100))this.tree(x,285,.8+hash(i)*.9);}if(theme==='wheat'){for(let i=0;i<100;i++){const x=hash(i)*1500,y=235+hash(i+9)*55;this.rect(x,y,2,30,'#797464');this.rect(x-3,y,8,12,'#99907b');}
+      // 清场后扶起的稻草人：立着并面朝风车，麦茬里也压出一条可见的路。
+      if(r.scarecrowUp){this.rect(514,246,6,54,'#6b5a44');this.rect(492,254,50,9,'#8a7a5c');this.rect(500,232,34,22,'#b5a37e');this.rect(510,237,4,4,'#2b333d');this.rect(526,237,4,4,'#2b333d');this.rect(496,278,48,4,'#a08c66');for(let i=0;i<5;i++)this.rect(560+i*22,318+Math.sin(i)*3,14,3,'#6d6753');}
+      else {this.line(500,300,548,282,'#6b5a44',6);this.rect(496,286,44,16,'#9a8a6a');this.rect(540,272,26,10,'#8a7c60');}
+    }}
     if(theme==='road'){
       // 路牌：没转正之前是歪倒在草丛里的一块牌子，转正后才立起来，并露出旧车辙。
       if(r.signState>=2){
@@ -138,11 +145,27 @@ export class Renderer {
     if(r.clear){this.glow(1410,340,110,'#a9cec633');for(let i=0;i<4;i++)this.line(1380+i*13,327,1400+i*13,340,'#c0d7c0',2);this.line(1420,339,1410,330,'#dce8c5',3);this.line(1420,339,1410,348,'#dce8c5',3);}
     this.rect(10,480,1500,60,'#242c32');for(let i=0;i<50;i++){this.rect(i*31,465+hash(i)*10,3,17,'#414d47');this.rect(i*31+3,470,7,3,'#556053');}
   }
+  // ── 美术 v2 阶段 0：精灵资源管线 ──────────────────────────────────────
+  // 若 assets/sprites/atlas.json 存在，角色改用图集渲染；不存在（当前情况）就
+  // 退回下面的程序绘制。格式与导出合同见 ART-V2-PRODUCTION.md，换正式美术时
+  // 只需要放素材，不需要改这里的代码。
+  loadSprites(){try{fetch('./assets/sprites/atlas.json').then(r=>{if(!r.ok)return null;return r.json();}).then(atlas=>{if(!atlas||!atlas.image||!atlas.frames)return;const image=new Image();image.onload=()=>{this.spriteImage=image;this.sprites=atlas.frames;};image.src='./assets/'+atlas.image;}).catch(()=>{});}catch{}}
+  drawSprite(id,x,y,facing=1){const frame=this.sprites?.[id];if(!frame||!this.spriteImage||!frame.rect)return false;const c=this.c,[fx,fy,fw,fh]=frame.rect;c.save();c.translate(Math.round(x),Math.round(y));c.scale(facing,1);c.drawImage(this.spriteImage,fx,fy,fw,fh,Math.round(-fw/2),-fh,fw,fh);c.restore();return true;}
   human(x,y,color,t,moving=false,id='hero',facing=1,action='idle'){
+    if(this.drawSprite(id+'.'+action,x,y,facing))return;
     this.shade(x,y-30);
-    const c=this.c;c.save();c.translate(Math.round(x),Math.round(y));const bob=moving?Math.sin(t*12)*2:Math.sin(t*2)*.6;c.fillStyle='#111c2560';c.beginPath();c.ellipse(0,-2,17,5,0,0,Math.PI*2);c.fill();c.translate(0,Math.round(bob));c.scale(facing,1);
+    const c=this.c;c.save();c.translate(Math.round(x),Math.round(y));const bob=moving?Math.sin(t*12)*2:Math.sin(t*2)*.6;c.fillStyle='#111c2560';c.beginPath();c.ellipse(0,-2,17,5,0,0,Math.PI*2);c.fill();c.restore();
+    // 先描边再画本体：深色剪影让角色在浅色墙面（旅店外墙、农舍）前也立得住。
+    const body=()=>this.body(x,y,color,t,moving,id,facing,action);
+    this.inkPass(body);
+    body();
+  }
+  body(x,y,color,t,moving,id,facing,action){
+    const c=this.c;c.save();c.translate(Math.round(x),Math.round(y));const bob=moving?Math.sin(t*12)*2:Math.sin(t*2)*.6;c.translate(0,Math.round(bob));c.scale(facing,1);
     const step=moving?Math.sin(t*12)*6:0;this.rect(-10,-15+step,7,14,'#282c36');this.rect(4,-15-step,7,14,'#292c35');this.rect(-12,-3+step,10,4,'#514b46');this.rect(3,-3-step,11,4,'#514b46');
     this.poly([[-14,-41],[8,-41],[16,-13],[-17,-13],[-21,-18]],id==='hero'?'#273e4a':color);this.rect(-8,-37,19,19,id==='hero'?'#50646a':'#6d615a');this.rect(-7,-31,18,3,'#9a8068');this.rect(-11,-17,25,4,'#8e715c');
+    // 顶光提亮肩线、下摆压暗：方块身体也能读出体积，而不是一块平色。
+    this.rect(-10,-40,19,2,id==='hero'?'#cfe0e529':'#ffffff1f');this.rect(-15,-15,30,2,'#0000002b');
     this.rect(-8,-56,19,19,'#ba9d85');this.rect(-10,-58,22,9,id==='hero'?'#303d46':id==='glen'?'#b8b3a6':id==='milo'?'#7b6653':'#69665f');this.rect(-12,-49,6,12,id==='hero'?'#303d46':color);this.rect(6,-47,3,3,'#2b333d');this.rect(-10,-39,24,5,id==='hero'?'#bb9b6a':color);
     if(id==='milo'){this.rect(2,-49,12,5,'#c4c6af');this.rect(5,-49,4,5,'#7a9a9a');}if(id==='ida')this.rect(-6,-29,14,18,'#dcc4a0');
     if(id==='hero'){this.rect(13,-30,6,17,'#a69073');this.rect(16,-16,8,11,'#ba9155');this.rect(18,-14,4,7,'#f2d597');this.glow(20,-11,42,'#eec37e20');if(action!=='attack'){this.line(-11,-24,-24,3,'#bbc8bd',3);this.line(-18,-15,-9,-10,'#b0a078',3);}}

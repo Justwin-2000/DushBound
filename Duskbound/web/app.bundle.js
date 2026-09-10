@@ -20,8 +20,9 @@
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
   // web/src/data.js
-  var VERSION = 2;
+  var VERSION = 3;
   var PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
+  var PRICES = { potion: 8, salve: 5, upgradeIron: 6 };
   var COMBO = [{ damage: 1, cost: 8, duration: 0.28, impact: 0.08 }, { damage: 1.1, cost: 9, duration: 0.3, impact: 0.1 }, { damage: 1.5, cost: 14, duration: 0.44, impact: 0.16 }];
   var ENEMIES = {
     rat: { name: "雾噬鼠", hp: 28, speed: 160, damage: 8, range: 70, windup: 0.35, recovery: 0.6, color: "#827a99" },
@@ -80,7 +81,7 @@
     const n = Math.max(1, Math.floor(attack * mult * (0.95 + roll * 0.1) - defense));
     return critical ? Math.floor(n * 1.5) : n;
   }
-  var freshRun = () => ({ room: 0, wave: 0, corruption: 0, startIron: 0, rewarded: [], campUsed: false, chestUsed: false, won: false, clear: false, replay: false, salveUsed: false, signState: 0, bypassUsed: false, doorOpened: false });
+  var freshRun = () => ({ room: 0, wave: 0, corruption: 0, startIron: 0, rewarded: [], campUsed: false, chestUsed: false, won: false, clear: false, replay: false, salveUsed: false, signState: 0, bypassUsed: false, doorOpened: false, ledgeSeen: false, packSearched: false, scarecrowUp: false });
   function newState(settings2 = {}) {
     return {
       saveVersion: VERSION,
@@ -281,6 +282,9 @@
       }
       if (r.room === 0 && r.signState >= 2) points.push({ id: "bypass", x: 250, y: 410, label: "沿旧车辙绕行" });
       if (r.room === 3) points.push({ id: "camp", x: 710, y: 330, label: r.campUsed ? "营火已熄" : "使用营火" });
+      if (r.room === 2) points.push({ id: "ledge", x: 250, y: 410, label: r.ledgeSeen ? "断口边缘" : "沿断口的边缘往下看" });
+      if (r.room === 3) points.push({ id: "pack", x: 980, y: 330, label: r.packSearched ? "翻过的背囊" : "翻找士兵的背囊" });
+      if (r.room === 4 && r.clear) points.push({ id: "scarecrow", x: 520, y: 300, label: r.scarecrowUp ? "站起来的稻草人" : "扶起倒下的稻草人" });
       if (r.room === 5 && r.clear) points.push({ id: "chest", x: 1080, y: 310, label: r.chestUsed ? "空补给箱" : "开启补给箱" });
       if (r.clear) points.push({ id: "exit", x: 1400, y: 350, label: r.room === 6 ? "返回暮边镇" : "前往下一区域" });
       return points;
@@ -365,6 +369,35 @@
         this.sound("quest");
         this.talk("农舍后墙", ["你把松动的板墙推开，墙后是一条直下河谷的兽径。", "从这里走，能少绕一段雾最浓的路。"], [{ text: "记住这条近路", action: "close" }]);
         this.save();
+      } else if (id === "ledge") {
+        if (s.run.ledgeSeen) {
+          this.toast("断口下面的河床还是老样子。");
+          return;
+        }
+        s.run.ledgeSeen = true;
+        s.inventory.iron = clamp(s.inventory.iron + 2, 0, 999);
+        this.sound("item");
+        this.talk("断桥的边缘", ["你贴着断口往下看。河床干了很多年，碎石里卡着半辆商队的推车。", "车厢散了，铁件还在。你捡了两块灰铁上来。", "对岸的脚印还在往雾里走。"], [{ text: "收好灰铁", action: "close" }]);
+        this.save();
+      } else if (id === "pack") {
+        if (s.run.packSearched) {
+          this.toast("背囊已经翻空了。");
+          return;
+        }
+        s.run.packSearched = true;
+        this.addPotion(1, true);
+        this.sound("item");
+        this.talk("士兵的背囊", ["背囊靠着石头，像是有人坐下之后就再没起来。", "里面有一瓶封好的药，和一张被雨泡开的纸。", "「艾琳说，风车的灯昨晚自己亮了。」后面还有半句，已经看不清了。"], [{ text: "收好药剂", action: "close" }]);
+        this.save();
+      } else if (id === "scarecrow") {
+        if (s.run.scarecrowUp) {
+          this.toast("稻草人立着，面朝风车。");
+          return;
+        }
+        s.run.scarecrowUp = true;
+        this.sound("quest");
+        this.talk("倒下的稻草人", ["你把稻草人扶起来，让它重新面朝风车。", "麦茬被压出一条清楚的路——从这里下风车，能少绕一段雾最浓的坡。"], [{ text: "记住这条路", action: "close" }]);
+        this.save();
       } else if (id === "camp") {
         if (s.run.campUsed) this.toast("余温还在，但已经不能再为提灯添火。");
         else this.talk("旧营火", ["火还没有熄。你可以让身体暖起来，或为提灯净去灰雾。"], [{ text: "休憩 · 恢复 40 生命", action: "healCamp" }, { text: "净化 · 侵蚀降低 15", action: "cleanseCamp" }]);
@@ -394,8 +427,8 @@
       const added = Math.min(3 - this.player.potions, n), extra = n - added;
       this.player.potions += added;
       if (extra && convert) {
-        this.s.inventory.coins = clamp(this.s.inventory.coins + extra * 8, 0, 999);
-        this.toast("药剂已满 · 多余药剂转为 " + extra * 8 + " 旧币");
+        this.s.inventory.coins = clamp(this.s.inventory.coins + extra * PRICES.potion, 0, 999);
+        this.toast("药剂已满 · 多余药剂转为 " + extra * PRICES.potion + " 旧币");
       } else if (added) this.toast("恢复药剂 +" + added);
     }
     buy(item2) {
@@ -406,22 +439,22 @@
           this.toast("最多携带 3 瓶药剂");
           return false;
         }
-        if (s.inventory.coins < 8) {
+        if (s.inventory.coins < PRICES.potion) {
           this.toast("旧币不足");
           return false;
         }
-        s.inventory.coins -= 8;
+        s.inventory.coins -= PRICES.potion;
         this.player.potions++;
       } else if (item2 === "salve") {
         if (s.inventory.salve) {
           this.toast("已有一份苦叶膏");
           return false;
         }
-        if (s.inventory.coins < 5) {
+        if (s.inventory.coins < PRICES.salve) {
           this.toast("旧币不足");
           return false;
         }
-        s.inventory.coins -= 5;
+        s.inventory.coins -= PRICES.salve;
         s.inventory.salve = 1;
       } else if (item2 === "craft") {
         if (!s.inventory.leaf || s.inventory.salve) {
@@ -437,11 +470,11 @@
       return true;
     }
     upgrade() {
-      if (this.s.scene !== "town" || this.player.weapon || this.s.inventory.iron < 6) {
-        this.toast(this.player.weapon ? "长剑已完成强化" : "强化需要 6 块灰铁");
+      if (this.s.scene !== "town" || this.player.weapon || this.s.inventory.iron < PRICES.upgradeIron) {
+        this.toast(this.player.weapon ? "长剑已完成强化" : "强化需要 " + PRICES.upgradeIron + " 块灰铁");
         return false;
       }
-      this.s.inventory.iron -= 6;
+      this.s.inventory.iron -= PRICES.upgradeIron;
       this.player.weapon = 1;
       this.sound("quest");
       this.toast("长剑强化完成 · 攻击 12 → 15");
@@ -502,7 +535,7 @@
       r.wave = 0;
       r.clear = cfg.waves.length === 0;
       r.won = false;
-      const relief = (r.salveUsed ? 10 : 0) + (i === 2 && r.doorOpened ? 5 : 0);
+      const relief = (r.salveUsed ? 10 : 0) + (i === 2 && r.doorOpened ? 5 : 0) + (i === 5 && r.scarecrowUp ? 5 : 0);
       r.corruption = clamp(r.corruption + Math.max(0, cfg.corruption - relief), 0, 100);
       if (cfg.corruption && r.salveUsed) r.salveUsed = false;
       this.s.enemies = [];
@@ -1126,7 +1159,7 @@
     if (!s.flags || !["cloak", "miloGift", "leafTaken", "memory", "log", "core", "tag", "letter", "letterGiven"].every((k) => typeof s.flags[k] === "boolean") || ![null, "honesty", "silence"].includes(s.ending)) return false;
     if (s.stage === 10 !== Boolean(s.ending) || s.stage >= 8 && s.stage < 10 && (!s.flags.core || !s.flags.tag)) return false;
     if (!t || !["hits", "combo", "dodges", "blocks", "parries", "attempts"].every((k) => Number.isInteger(t[k]) && num(t[k], 0, 9999)) || typeof t.active !== "boolean") return false;
-    if (!r || !Number.isInteger(r.room) || !num(r.room, 0, 6) || !Number.isInteger(r.wave) || !num(r.wave, 0, 2) || !num(r.corruption, 0, 100) || !num(r.startIron, 0, 999) || !Array.isArray(r.rewarded) || !r.rewarded.every((v) => Number.isInteger(v) && num(v, 0, 6)) || !Number.isInteger(r.signState) || !num(r.signState, 0, 2) || !["campUsed", "chestUsed", "won", "clear", "replay", "salveUsed", "bypassUsed", "doorOpened"].every((k) => typeof r[k] === "boolean")) return false;
+    if (!r || !Number.isInteger(r.room) || !num(r.room, 0, 6) || !Number.isInteger(r.wave) || !num(r.wave, 0, 2) || !num(r.corruption, 0, 100) || !num(r.startIron, 0, 999) || !Array.isArray(r.rewarded) || !r.rewarded.every((v) => Number.isInteger(v) && num(v, 0, 6)) || !Number.isInteger(r.signState) || !num(r.signState, 0, 2) || !["campUsed", "chestUsed", "won", "clear", "replay", "salveUsed", "bypassUsed", "doorOpened", "ledgeSeen", "packSearched", "scarecrowUp"].every((k) => typeof r[k] === "boolean")) return false;
     if (!Array.isArray(s.enemies) || s.enemies.length > 5 || s.enemies.some((e) => !ENEMIES[e.kind] || !num(e.hp, 0, ENEMIES[e.kind].hp) || !num(e.maxHp, 1, ENEMIES[e.kind].hp) || e.hp > e.maxHp || !num(e.x, 0, 1600) || !num(e.y, 170, 460) || !Number.isInteger(e.id) || !num(e.id, 0, 1e9) || !["chase", "windup", "recover", "stunned", "transition"].includes(e.state) || !num(e.timer, 0, 10) || ![1, -1].includes(e.facing) || ![1, 2].includes(e.phase) || !["transitioned", "summoned"].every((k) => typeof e[k] === "boolean") || !["parries", "attackCount"].every((k) => Number.isInteger(e[k]) && num(e[k], 0, 1e9)) || ![0, 1].includes(e.chargeStep) || !num(e.tx, 0, 1600) || !num(e.ty, 0, 460) || !num(e.flash, 0, 1) || !Array.isArray(e.history) || e.history.length > 3 || !e.history.every((m) => Object.hasOwn(BOSS_MOVES, m)) || ![...Object.keys(BOSS_MOVES), "strike"].includes(e.move))) return false;
     if (s.scene === "dungeon" && (p.x > 1600 || s.stage < 6)) return false;
     if (!num(s.playTime, 0, 1e9) || !Array.isArray(s.logs) || s.logs.length > 30 || s.logs.some((v) => typeof v !== "string" || v.length > 1e3)) return false;
@@ -1156,6 +1189,11 @@
       saveVersion: 2,
       flags: __spreadValues({ letter: false, letterGiven: false }, s.flags),
       run: __spreadValues({ signState: 0, bypassUsed: false, doorOpened: false }, s.run)
+    }),
+    // 2 -> 3：1.2.2 把探索与事件铺到断桥、营火与麦田，新增三个本次远征状态。
+    2: (s) => __spreadProps(__spreadValues({}, s), {
+      saveVersion: 3,
+      run: __spreadValues({ ledgeSeen: false, packSearched: false, scarecrowUp: false }, s.run)
     })
   };
   function migrateSave(s) {
@@ -1271,6 +1309,9 @@
       this.gradients = /* @__PURE__ */ new Map();
       this.glowCache = /* @__PURE__ */ new Map();
       this.shadeCache = null;
+      this.ink = null;
+      this.sprites = null;
+      this.spriteImage = null;
       this.scenery = new Image();
       this.scenery.src = "./assets/world.webp";
       this.resize();
@@ -1282,18 +1323,43 @@
       this.canvas.height = 540;
       this.c.imageSmoothingEnabled = false;
       this.gradients.clear();
+      this.loadSprites();
     }
+    // ink 非空时只画「向外扩 1px 的深色剪影」，用于给角色描边。
+    // 描边是像素风里保证角色在任意背景上都可读的关键手段。
     rect(x, y, w, h, color) {
-      this.c.fillStyle = color;
-      this.c.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
+      const c = this.c;
+      if (this.ink) {
+        c.fillStyle = this.ink;
+        c.fillRect(Math.round(x) - 1, Math.round(y) - 1, Math.ceil(w) + 2, Math.ceil(h) + 2);
+        return;
+      }
+      c.fillStyle = color;
+      c.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
     }
     poly(points, color) {
       const c = this.c;
-      c.fillStyle = color;
+      c.fillStyle = this.ink || color;
       c.beginPath();
       points.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
       c.closePath();
       c.fill();
+      if (this.ink) {
+        c.lineWidth = 2;
+        c.strokeStyle = this.ink;
+        c.stroke();
+      }
+    }
+    inkPass(draw) {
+      const previous = this.ink;
+      this.ink = "#0a0e15e0";
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        this.c.save();
+        this.c.translate(dx, dy);
+        draw();
+        this.c.restore();
+      }
+      this.ink = previous;
     }
     text(text, x, y, size = 13, color = "#e8dfc5", align = "center") {
       const c = this.c;
@@ -1738,6 +1804,19 @@
             this.rect(x, y, 2, 30, "#797464");
             this.rect(x - 3, y, 8, 12, "#99907b");
           }
+          if (r.scarecrowUp) {
+            this.rect(514, 246, 6, 54, "#6b5a44");
+            this.rect(492, 254, 50, 9, "#8a7a5c");
+            this.rect(500, 232, 34, 22, "#b5a37e");
+            this.rect(510, 237, 4, 4, "#2b333d");
+            this.rect(526, 237, 4, 4, "#2b333d");
+            this.rect(496, 278, 48, 4, "#a08c66");
+            for (let i = 0; i < 5; i++) this.rect(560 + i * 22, 318 + Math.sin(i) * 3, 14, 3, "#6d6753");
+          } else {
+            this.line(500, 300, 548, 282, "#6b5a44", 6);
+            this.rect(496, 286, 44, 16, "#9a8a6a");
+            this.rect(540, 272, 26, 10, "#8a7c60");
+          }
         }
       }
       if (theme === "road") {
@@ -1786,7 +1865,42 @@
         this.rect(i * 31 + 3, 470, 7, 3, "#556053");
       }
     }
+    // ── 美术 v2 阶段 0：精灵资源管线 ──────────────────────────────────────
+    // 若 assets/sprites/atlas.json 存在，角色改用图集渲染；不存在（当前情况）就
+    // 退回下面的程序绘制。格式与导出合同见 ART-V2-PRODUCTION.md，换正式美术时
+    // 只需要放素材，不需要改这里的代码。
+    loadSprites() {
+      try {
+        fetch("./assets/sprites/atlas.json").then((r) => {
+          if (!r.ok) return null;
+          return r.json();
+        }).then((atlas) => {
+          if (!atlas || !atlas.image || !atlas.frames) return;
+          const image = new Image();
+          image.onload = () => {
+            this.spriteImage = image;
+            this.sprites = atlas.frames;
+          };
+          image.src = "./assets/" + atlas.image;
+        }).catch(() => {
+        });
+      } catch (e) {
+      }
+    }
+    drawSprite(id, x, y, facing = 1) {
+      var _a2;
+      const frame2 = (_a2 = this.sprites) == null ? void 0 : _a2[id];
+      if (!frame2 || !this.spriteImage || !frame2.rect) return false;
+      const c = this.c, [fx, fy, fw, fh] = frame2.rect;
+      c.save();
+      c.translate(Math.round(x), Math.round(y));
+      c.scale(facing, 1);
+      c.drawImage(this.spriteImage, fx, fy, fw, fh, Math.round(-fw / 2), -fh, fw, fh);
+      c.restore();
+      return true;
+    }
     human(x, y, color, t, moving = false, id = "hero", facing = 1, action = "idle") {
+      if (this.drawSprite(id + "." + action, x, y, facing)) return;
       this.shade(x, y - 30);
       const c = this.c;
       c.save();
@@ -1796,6 +1910,16 @@
       c.beginPath();
       c.ellipse(0, -2, 17, 5, 0, 0, Math.PI * 2);
       c.fill();
+      c.restore();
+      const body = () => this.body(x, y, color, t, moving, id, facing, action);
+      this.inkPass(body);
+      body();
+    }
+    body(x, y, color, t, moving, id, facing, action) {
+      const c = this.c;
+      c.save();
+      c.translate(Math.round(x), Math.round(y));
+      const bob = moving ? Math.sin(t * 12) * 2 : Math.sin(t * 2) * 0.6;
       c.translate(0, Math.round(bob));
       c.scale(facing, 1);
       const step = moving ? Math.sin(t * 12) * 6 : 0;
@@ -1807,6 +1931,8 @@
       this.rect(-8, -37, 19, 19, id === "hero" ? "#50646a" : "#6d615a");
       this.rect(-7, -31, 18, 3, "#9a8068");
       this.rect(-11, -17, 25, 4, "#8e715c");
+      this.rect(-10, -40, 19, 2, id === "hero" ? "#cfe0e529" : "#ffffff1f");
+      this.rect(-15, -15, 30, 2, "#0000002b");
       this.rect(-8, -56, 19, 19, "#ba9d85");
       this.rect(-10, -58, 22, 9, id === "hero" ? "#303d46" : id === "glen" ? "#b8b3a6" : id === "milo" ? "#7b6653" : "#69665f");
       this.rect(-12, -49, 6, 12, id === "hero" ? "#303d46" : color);
@@ -2282,6 +2408,7 @@
   var settings = __spreadValues(__spreadValues({}, DEFAULT_SETTINGS), saved == null ? void 0 : saved.settings);
   var saveErrorShown = false;
   var restoreFocus = null;
+  var lastBackExit = -1e9;
   try {
     const raw = JSON.parse(storage.getItem("duskbound.settings") || "null");
     if (raw) for (const k in DEFAULT_SETTINGS) {
@@ -2425,13 +2552,13 @@
       html = '<div class="menu-grid">'.concat(items.map(([n, i, t, k]) => '<button data-ui="'.concat(n, '">').concat(icon(i), "<span>").concat(t, "</span><small>").concat(k, "</small></button>")).join("")).concat(s.scene === "dungeon" ? '<button class="wide" data-ui="confirm-retreat">'.concat(icon("gate"), "安全撤回小镇<small>保留已得物资</small></button>") : "", '</div><div class="menu-meta"><span>').concat(s.scene === "town" ? "暮边镇" : ROOMS[s.run.room].name, "</span><span>旅程 ").concat(Math.floor(s.playTime / 60), " 分钟</span><span>单人 · 自动保存</span></div>");
     } else if (name === "inventory") {
       title = "巡界者的行囊";
-      html = '<span class="section-label">消耗品</span>'.concat(item("potion", "恢复药剂", "恢复 35 生命；饮用过程中受击会打断，药剂保留。", "×".concat(p.potions), p.potions && p.hp < p.maxHp ? '<button class="small-button" data-ui="use-potion">使用</button>' : "")).concat(item("leaf", "苦叶膏", "涂抹后，下一次房间侵蚀增长减少 10。", "×".concat(s.inventory.salve), s.inventory.salve && !s.run.salveUsed ? '<button class="small-button" data-ui="use-salve">涂抹</button>' : ""), '\n      <span class="section-label" style="margin-top:25px">材料与货币</span>').concat(item("coin", "旧币", "原野里的旧时代货币。", s.inventory.coins)).concat(item("iron", "灰铁", "收集 6 块可请格伦强化长剑一次。", s.inventory.iron)).concat(item("leaf", "苦叶", "药草屋可免费将一份苦叶制成苦叶膏。", s.inventory.leaf), "\n      ").concat(s.flags.core || s.flags.tag || s.flags.log ? '<span class="section-label" style="margin-top:25px">关键物品 · 永久保留</span>' : "").concat(s.flags.core ? item("lamp", "黯淡核心", "尚有余温。界灯正在等待它。", "") : "").concat(s.flags.tag ? item("tag", "艾琳的军牌", "一个名字，和一个尚未被说出的故事。", "") : "").concat(s.flags.log ? item("book", "士兵日志", "艾琳说，风车的灯昨晚自己亮了。", "") : "");
+      html = '<span class="section-label">消耗品</span>'.concat(item("potion", "恢复药剂", "恢复 35 生命；饮用过程中受击会打断，药剂保留。", "×".concat(p.potions), p.potions && p.hp < p.maxHp ? '<button class="small-button" data-ui="use-potion">使用</button>' : "")).concat(item("leaf", "苦叶膏", "涂抹后，下一次房间侵蚀增长减少 10。", "×".concat(s.inventory.salve), s.inventory.salve && !s.run.salveUsed ? '<button class="small-button" data-ui="use-salve">涂抹</button>' : ""), '\n      <span class="section-label" style="margin-top:25px">材料与货币</span>').concat(item("coin", "旧币", "原野里的旧时代货币。", s.inventory.coins)).concat(item("iron", "灰铁", "收集 ".concat(PRICES.upgradeIron, " 块可请格伦强化长剑一次。"), s.inventory.iron)).concat(item("leaf", "苦叶", "药草屋可免费将一份苦叶制成苦叶膏。", s.inventory.leaf), "\n      ").concat(s.flags.core || s.flags.tag || s.flags.log ? '<span class="section-label" style="margin-top:25px">关键物品 · 永久保留</span>' : "").concat(s.flags.core ? item("lamp", "黯淡核心", "尚有余温。界灯正在等待它。", "") : "").concat(s.flags.tag ? item("tag", "艾琳的军牌", "一个名字，和一个尚未被说出的故事。", "") : "").concat(s.flags.log ? item("book", "士兵日志", "艾琳说，风车的灯昨晚自己亮了。", "") : "");
     } else if (name === "equipment") {
       title = "剑与提灯";
       html = "".concat(item("sword", p.weapon ? "巡界长剑 · 已强化" : "巡界长剑", "旧刃仍有分量。三段攻击，最后一击最重。", p.weapon ? "Ⅰ" : "")).concat(item("cloak", s.flags.cloak ? "旧巡界斗篷" : "旧皮甲", s.flags.cloak ? "伊妲替你缝好了领口。生命上限 +10。" : "去旅店找伊妲，取回她保管的斗篷。", ""), '<div class="stat-grid"><div><small>攻击</small><b>').concat(p.weapon ? 15 : 12, "</b></div><div><small>防御</small><b>2</b></div><div><small>生命上限</small><b>").concat(p.maxHp, "</b></div></div><p>装备随身携带，无需反复装卸。</p>").concat(!p.weapon ? '<div class="notice">格伦的锻造 · 需要灰铁 6 块，现有 '.concat(s.inventory.iron, ' 块。强化后攻击提升至 15。</div><button class="primary" data-ui="upgrade" ').concat(s.scene !== "town" || s.inventory.iron < 6 ? "disabled" : "", ">").concat(s.scene !== "town" ? "返回小镇后可强化" : "请格伦强化长剑", " <span>6 灰铁</span></button>") : '<div class="notice">这把剑已经磨得足够锋利。剩下的，要靠握剑的人。</div>');
     } else if (name === "shop") {
       title = "米洛的补给";
-      html = '<div class="menu-meta" style="margin:0 0 21px"><span>出发前，把背包再检查一遍。</span><span>旧币 '.concat(s.inventory.coins, "</span></div>").concat(item("potion", "恢复药剂", "每瓶恢复 35 生命，最多携带 3 瓶。", "".concat(p.potions, "/3"), '<button class="small-button" data-buy="potion" '.concat(p.potions >= 3 || s.inventory.coins < 8 ? "disabled" : "", ">8 旧币</button>"))).concat(item("leaf", "苦叶膏", "下一个产生侵蚀的房间，增长减少 10。", "".concat(s.inventory.salve, "/1"), '<button class="small-button" data-buy="salve" '.concat(s.inventory.salve || s.inventory.coins < 5 ? "disabled" : "", ">5 旧币</button>"))).concat(item("leaf", "调制苦叶膏", "用一份苦叶，请米洛免费调制。", "".concat(s.inventory.leaf, " 叶"), '<button class="small-button" data-buy="craft" '.concat(!s.inventory.leaf || s.inventory.salve ? "disabled" : "", ">调制</button>")), '<div class="notice">旅店可免费恢复生命，并将药剂补至两瓶。米洛首次见面还会赠送一瓶。</div>');
+      html = '<div class="menu-meta" style="margin:0 0 21px"><span>出发前，把背包再检查一遍。</span><span>旧币 '.concat(s.inventory.coins, "</span></div>").concat(item("potion", "恢复药剂", "每瓶恢复 35 生命，最多携带 3 瓶。", "".concat(p.potions, "/3"), '<button class="small-button" data-buy="potion" '.concat(p.potions >= 3 || s.inventory.coins < PRICES.potion ? "disabled" : "", ">").concat(PRICES.potion, " 旧币</button>"))).concat(item("leaf", "苦叶膏", "下一个产生侵蚀的房间，增长减少 10。", "".concat(s.inventory.salve, "/1"), '<button class="small-button" data-buy="salve" '.concat(s.inventory.salve || s.inventory.coins < PRICES.salve ? "disabled" : "", ">").concat(PRICES.salve, " 旧币</button>"))).concat(item("leaf", "调制苦叶膏", "用一份苦叶，请米洛免费调制。", "".concat(s.inventory.leaf, " 叶"), '<button class="small-button" data-buy="craft" '.concat(!s.inventory.leaf || s.inventory.salve ? "disabled" : "", ">调制</button>")), '<div class="notice">旅店可免费恢复生命，并将药剂补至两瓶。米洛首次见面还会赠送一瓶。</div>');
     } else if (name === "map") {
       title = s.scene === "town" ? "暮边镇街道" : "灰风原野";
       if (s.scene === "town") {
@@ -2531,40 +2658,65 @@
     }
     if (save) saveGame();
   }
+  var hudCache = {};
+  var hudText = (id, value) => {
+    if (hudCache[id] === value) return;
+    hudCache[id] = value;
+    $(id).textContent = value;
+  };
+  var hudWidth = (id, value) => {
+    if (hudCache[id] === value) return;
+    hudCache[id] = value;
+    $(id).style.width = value;
+  };
+  var hudFlag = (id, value) => {
+    if (hudCache[id] === value) return;
+    hudCache[id] = value;
+    $(id).classList.toggle("hidden", value);
+  };
+  var hudStyle = (id, prop, value) => {
+    const k = id + "." + prop;
+    if (hudCache[k] === value) return;
+    hudCache[k] = value;
+    $(id).style[prop] = value;
+  };
   function refreshHud() {
     if (!game || onTitle) return;
     const s = game.s, p = s.player, r = s.run, boss = s.enemies.find((e) => e.kind === "boss"), near = game.nearby();
-    $("hp-text").textContent = "".concat(Math.ceil(p.hp), " / ").concat(p.maxHp);
-    $("hp-fill").style.width = p.hp / p.maxHp * 100 + "%";
-    $("stamina-fill").style.width = p.stamina + "%";
-    $("corruption-fill").style.width = r.corruption + "%";
-    $("corruption-text").textContent = r.corruption;
-    $("potion-count").textContent = p.potions;
-    $("corruption-row").classList.toggle("hidden", s.scene !== "dungeon");
-    $("boss-hud").classList.toggle("hidden", !boss);
+    hudText("hp-text", "".concat(Math.ceil(p.hp), " / ").concat(p.maxHp));
+    hudWidth("hp-fill", p.hp / p.maxHp * 100 + "%");
+    hudWidth("stamina-fill", p.stamina + "%");
+    hudWidth("corruption-fill", r.corruption + "%");
+    hudText("corruption-text", r.corruption);
+    hudText("potion-count", p.potions);
+    hudFlag("corruption-row", s.scene !== "dungeon");
+    hudFlag("boss-hud", !boss);
     if (boss) {
-      $("boss-fill").style.width = boss.hp / 620 * 100 + "%";
-      $("boss-value").textContent = Math.ceil(boss.hp) + " / 620";
-      $("boss-phase").textContent = boss.phase === 2 ? "Ⅱ · 灯灭之时" : "Ⅰ · 最后的命令";
+      const max = boss.maxHp;
+      hudWidth("boss-fill", boss.hp / max * 100 + "%");
+      hudText("boss-value", Math.ceil(boss.hp) + " / " + max);
+      hudText("boss-phase", boss.phase === 2 ? "Ⅱ · 灯灭之时" : "Ⅰ · 最后的命令");
     }
     const key = [s.scene, r.room, s.stage, s.ending, Math.floor(p.x / 500)].join(":");
     if (key !== hudLast) {
       hudLast = key;
-      $("quest-text").textContent = QUESTS[s.stage];
-      $("place-name").textContent = s.scene === "town" ? "暮边镇" : ROOMS[r.room].name;
-      $("place-subtitle").textContent = s.scene === "town" ? s.ending ? "余烬已燃" : "黄昏 · 界灯尚明" : "灰风原野 · ".concat(r.room + 1, " / 7");
-      $("room-dots").innerHTML = s.scene === "dungeon" ? ROOMS.map((_, i) => '<i class="'.concat(i <= r.room ? "done" : "", '"></i>')).join("") : "";
+      hudText("quest-text", QUESTS[s.stage]);
+      hudText("place-name", s.scene === "town" ? "暮边镇" : ROOMS[r.room].name);
+      hudText("place-subtitle", s.scene === "town" ? s.ending ? "余烬已燃" : "黄昏 · 界灯尚明" : "灰风原野 · ".concat(r.room + 1, " / 7"));
+      if (hudCache["room-dots"] !== key) {
+        hudCache["room-dots"] = key;
+        $("room-dots").innerHTML = s.scene === "dungeon" ? ROOMS.map((_, i) => '<i class="'.concat(i <= r.room ? "done" : "", '"></i>')).join("") : "";
+      }
     }
-    $("coins-text").textContent = "旧币 " + s.inventory.coins;
-    $("iron-text").textContent = "灰铁 " + s.inventory.iron;
-    $("tutorial").classList.toggle("hidden", !s.tutorial.active);
-    if (s.tutorial.active) $("tutorial-text").textContent = game.tutorialHint();
-    $("interact").classList.toggle("hidden", !near || !!menu || !!currentDialog);
-    if (near) $("interact-label").textContent = near.label;
-    $("attack").style.opacity = p.stamina < 8 ? 0.5 : 1;
-    $("dodge").style.opacity = p.stamina < 24 || game.p.dodgeCooldown > 0 ? 0.5 : 1;
-    const controlVisible = !onTitle && !currentDialog && !menu;
-    $("touch-controls").style.visibility = controlVisible ? "visible" : "hidden";
+    hudText("coins-text", "旧币 " + s.inventory.coins);
+    hudText("iron-text", "灰铁 " + s.inventory.iron);
+    hudFlag("tutorial", !s.tutorial.active);
+    if (s.tutorial.active) hudText("tutorial-text", game.tutorialHint());
+    hudFlag("interact", !near || !!menu || !!currentDialog);
+    if (near) hudText("interact-label", near.label);
+    hudStyle("attack", "opacity", p.stamina < 8 ? 0.5 : 1);
+    hudStyle("dodge", "opacity", p.stamina < 24 || game.p.dodgeCooldown > 0 ? 0.5 : 1);
+    hudStyle("touch-controls", "visibility", !onTitle && !currentDialog && !menu ? "visible" : "hidden");
   }
   function importSave(raw) {
     if (raw.length > 1024 * 1024) {
@@ -2773,9 +2925,19 @@
     if (typeof e.detail === "string") showToast(e.detail);
   });
   window.addEventListener("native-back", () => {
+    var _a2;
     if (onTitle && !menu) {
-      openMenu("settings");
-    } else togglePause();
+      const now = performance.now();
+      if (now - lastBackExit < 1800) {
+        if ((_a2 = window.AndroidBridge) == null ? void 0 : _a2.exitApp) window.AndroidBridge.exitApp();
+        else showToast("浏览器中请用标签页关闭");
+        return;
+      }
+      lastBackExit = now;
+      showToast("再按一次返回键退出", 2e3);
+      return;
+    }
+    togglePause();
   });
   function backgroundPause() {
     input.clear();

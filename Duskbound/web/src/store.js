@@ -9,7 +9,7 @@ export function validateSave(s) {
   if (!s.flags || !['cloak','miloGift','leafTaken','memory','log','core','tag','letter','letterGiven'].every(k=>typeof s.flags[k]==='boolean') || ![null,'honesty','silence'].includes(s.ending)) return false;
   if ((s.stage === 10) !== Boolean(s.ending) || (s.stage >= 8 && s.stage < 10 && (!s.flags.core || !s.flags.tag))) return false;
   if (!t || !['hits','combo','dodges','blocks','parries','attempts'].every(k=>Number.isInteger(t[k])&&num(t[k],0,9999)) || typeof t.active!=='boolean') return false;
-  if (!r || !Number.isInteger(r.room) || !num(r.room,0,6) || !Number.isInteger(r.wave) || !num(r.wave,0,2) || !num(r.corruption,0,100) || !num(r.startIron,0,999) || !Array.isArray(r.rewarded) || !r.rewarded.every(v=>Number.isInteger(v)&&num(v,0,6)) || !Number.isInteger(r.signState) || !num(r.signState,0,2) || !['campUsed','chestUsed','won','clear','replay','salveUsed','bypassUsed','doorOpened'].every(k=>typeof r[k]==='boolean')) return false;
+  if (!r || !Number.isInteger(r.room) || !num(r.room,0,6) || !Number.isInteger(r.wave) || !num(r.wave,0,2) || !num(r.corruption,0,100) || !num(r.startIron,0,999) || !Array.isArray(r.rewarded) || !r.rewarded.every(v=>Number.isInteger(v)&&num(v,0,6)) || !Number.isInteger(r.signState) || !num(r.signState,0,2) || !['campUsed','chestUsed','won','clear','replay','salveUsed','bypassUsed','doorOpened','ledgeSeen','packSearched','scarecrowUp'].every(k=>typeof r[k]==='boolean')) return false;
   if (!Array.isArray(s.enemies) || s.enemies.length>5 || s.enemies.some(e=>!ENEMIES[e.kind] || !num(e.hp,0,ENEMIES[e.kind].hp) || !num(e.maxHp,1,ENEMIES[e.kind].hp) || e.hp>e.maxHp || !num(e.x,0,1600) || !num(e.y,170,460) || !Number.isInteger(e.id) || !num(e.id,0,1e9) || !['chase','windup','recover','stunned','transition'].includes(e.state) || !num(e.timer,0,10) || ![1,-1].includes(e.facing) || ![1,2].includes(e.phase) || !['transitioned','summoned'].every(k=>typeof e[k]==='boolean') || !['parries','attackCount'].every(k=>Number.isInteger(e[k])&&num(e[k],0,1e9)) || ![0,1].includes(e.chargeStep) || !num(e.tx,0,1600) || !num(e.ty,0,460) || !num(e.flash,0,1) || !Array.isArray(e.history) || e.history.length>3 || !e.history.every(m=>Object.hasOwn(BOSS_MOVES,m)) || ![...Object.keys(BOSS_MOVES),'strike'].includes(e.move))) return false;
   if (s.scene==='dungeon' && (p.x>1600 || s.stage<6)) return false;
   if (!num(s.playTime,0,1e9) || !Array.isArray(s.logs) || s.logs.length>30 || s.logs.some(v=>typeof v!=='string'||v.length>1000)) return false;
@@ -33,6 +33,12 @@ export const SAVE_MIGRATIONS = {
     saveVersion: 2,
     flags: { letter: false, letterGiven: false, ...s.flags },
     run: { signState: 0, bypassUsed: false, doorOpened: false, ...s.run }
+  }),
+  // 2 -> 3：1.2.2 把探索与事件铺到断桥、营火与麦田，新增三个本次远征状态。
+  2: s => ({
+    ...s,
+    saveVersion: 3,
+    run: { ledgeSeen: false, packSearched: false, scarecrowUp: false, ...s.run }
   })
 };
 
