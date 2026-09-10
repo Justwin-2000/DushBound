@@ -88,10 +88,27 @@ export class Renderer {
   dungeon(g){const r=g.s.run,theme=ROOMS[r.room].theme,t=g.time;
     if(theme==='boss'){this.windmill(760,294,2.1,t*.7,'#292733',true);this.poly([[100,460],[40,300],[220,216],[1320,216],[1480,300],[1430,460]],'#4a4651');for(let k=0;k<15;k++)this.line(90+k*90,245,110+k*90,453,'#5a535e',2);this.rect(90,238,1350,12,'#777075');this.rect(70,454,1390,20,'#2f2e39');for(let i=0;i<18;i++)this.rect(100+i*77,204,8,46,'#47414d');}
     else if(theme==='bridge'){this.rect(70,236,1370,209,'#56535a');for(let i=0;i<26;i++)this.rect(75+i*53,241,3,200,'#343842');this.fence(85,242,1290);this.fence(80,444,1270);}
-    else if(theme==='farm')this.house(690,294,350,172,'herbs',false,t);
+    else if(theme==='farm'){
+      this.house(690,294,350,172,'herbs',false,t);
+      // 清场后推开板墙：墙上真的多出一个洞，近路看得见。
+      if(r.doorOpened){
+        this.rect(715,200,46,52,'#161d27');this.rect(711,196,54,5,'#9a8f7c');
+        this.poly([[707,252],[769,252],[779,262],[697,262]],'#6b6355');this.glow(738,226,46,'#cfe0d322');
+      }
+    }
     else if(theme==='mill'){this.rect(510,110,500,180,'#484650');for(let k=0;k<7;k++)this.rect(520,120+k*23,480,3,'#383b46');this.rect(710,191,130,105,'#252b34');this.rect(740,216,8,63,'#777079');this.rect(789,216,8,63,'#777079');}
     else {for(let i=0;i<12;i++){const x=i*127;if(this.visible(x,100))this.tree(x,285,.8+hash(i)*.9);}if(theme==='wheat'){for(let i=0;i<100;i++){const x=hash(i)*1500,y=235+hash(i+9)*55;this.rect(x,y,2,30,'#797464');this.rect(x-3,y,8,12,'#99907b');}}}
-    if(theme==='road'){this.rect(332,255,8,65,'#827564');this.poly([[312,257],[384,257],[393,265],[380,274],[312,274]],'#a5977a');this.text('王都 67 里',351,270,9,'#413d3e');}
+    if(theme==='road'){
+      // 路牌：没转正之前是歪倒在草丛里的一块牌子，转正后才立起来，并露出旧车辙。
+      if(r.signState>=2){
+        this.rect(332,255,8,65,'#827564');this.poly([[312,257],[384,257],[393,265],[380,274],[312,274]],'#a5977a');this.text('王都 67 里',351,270,9,'#413d3e');
+        this.glow(351,300,58,'#e8d7a01f');
+        for(let i=0;i<6;i++)this.rect(190+i*24,404+Math.sin(i)*3,16,3,'#5c5548');
+      }else{
+        this.line(338,318,366,262,'#827564',8);
+        this.poly([[300,300],[372,288],[380,302],[306,314]],'#8a7f6d');this.text('王都 67 里',340,304,9,'#3b3833');
+      }
+    }
     else if(theme==='camp'){this.rect(688,343,47,9,'#575459');this.line(689,338,734,324,'#867665',8);this.line(695,323,728,339,'#7a6759',7);if(!r.campUsed){this.flame(711,333,1.1,t);this.glow(711,315,110,'#edb4743d');}this.rect(332,290,38,9,'#b4a68c');this.rect(350,277,18,16,'#c7b499');}
     else if(theme==='mill'){this.rect(332,293,17,16,'#b8a076');this.line(341,278,358,300,'#ccbba0',3);if(r.clear){this.rect(1052,288,55,33,r.chestUsed?'#635853':'#988469');this.rect(1050,281,59,12,'#b49b73');this.rect(1075,288,9,16,'#463f42');}}
     else {this.rect(328,295,45,12,'#817a76');this.rect(338,280,20,17,'#9c9090');}

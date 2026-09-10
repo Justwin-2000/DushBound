@@ -1,4 +1,4 @@
-export const VERSION = 1;
+export const VERSION = 2;
 export const PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
 export const COMBO = [ { damage: 1, cost: 8, duration: .28, impact: .08 }, { damage: 1.1, cost: 9, duration: .3, impact: .1 }, { damage: 1.5, cost: 14, duration: .44, impact: .16 } ];
 export const ENEMIES = {

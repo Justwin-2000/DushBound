@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game, newState } from '../web/src/game.js';
+import { VERSION } from '../web/src/data.js';
 import { SaveStore, validateSave, encodeSave, decodeSave, migrateSave, SAVE_MIGRATIONS } from '../web/src/store.js';
 
 const KEY = 'duskbound.save.v1';
@@ -84,7 +85,7 @@ test('版本迁移机制可用：缺步骤必须拒绝，补齐步骤即可升�
   SAVE_MIGRATIONS[0] = s => ({ ...s, saveVersion: 1 });
   try {
     const migrated = migrateSave(legacy);
-    assert.equal(migrated.saveVersion, 1);
+    assert.equal(migrated.saveVersion, VERSION, '应当逐级迁移到当前版本');
     assert.equal(validateSave(migrated), true, '迁移之后应当能通过校验');
   } finally { delete SAVE_MIGRATIONS[0]; }
 });
@@ -112,7 +113,7 @@ test('主档与备份都损坏时，用中断写入残留的 .pending 恢复', (
   storage.setItem(KEY + '.backup', '{"checksum":"deadbeef","payload":"{}"}');
   storage.setItem(KEY + '.pending', encodeSave(newState()));
   const loaded = store.load();
-  assert.equal(loaded.saveVersion, 1);
+  assert.equal(loaded.saveVersion, VERSION);
   assert.equal(store.recovered, true, '应当标记为从非主档恢复');
   assert.equal(store.blocked, false);
 });
@@ -122,6 +123,41 @@ test('首次保存也写备份，且成功后不残留 .pending', () => {
   assert.equal(typeof storage.getItem(KEY + '.backup'), 'string', '首次保存必须写备份，否则主档一坏无从回退');
   assert.equal(storage.getItem(KEY + '.pending'), null);
   storage.setItem(KEY, 'corrupted');
-  assert.equal(store.load().saveVersion, 1);
+  assert.equal(store.load().saveVersion, VERSION);
   assert.equal(store.recovered, true);
+});
+
+// —— 真实的 1.1.x -> 1.2.0 迁移：老存档必须能继续玩 ——
+function legacyV1Save() {
+  const s = newState();
+  s.saveVersion = 1;
+  delete s.flags.letter; delete s.flags.letterGiven;
+  delete s.run.signState; delete s.run.bypassUsed; delete s.run.doorOpened;
+  return s;
+}
+test('1.1.x 老存档（无家书与路牌字段）能迁移到当前版本，且不改动既有进度', () => {
+  const legacy = legacyV1Save();
+  legacy.player.hp = 63; legacy.inventory.coins = 17; legacy.stage = 7; legacy.scene = 'dungeon'; legacy.run.room = 2;
+  assert.equal(validateSave(legacy), false, '缺字段的老存档本身通不过校验');
+  const restored = decodeSave(encodeSave(legacy));
+  assert.equal(restored.saveVersion, VERSION);
+  assert.equal(restored.flags.letter, false);
+  assert.equal(restored.flags.letterGiven, false);
+  assert.equal(restored.run.signState, 0);
+  assert.equal(restored.run.bypassUsed, false);
+  assert.equal(restored.run.doorOpened, false);
+  assert.equal(restored.player.hp, 63, '迁移不得改动既有进度');
+  assert.equal(restored.inventory.coins, 17);
+  assert.equal(restored.stage, 7);
+  assert.equal(validateSave(restored), true);
+});
+test('老存档经 SaveStore 载入后不被判为损坏，且可以继续保存', () => {
+  const storage = memoryStorage(), store = new SaveStore(storage);
+  storage.setItem(KEY, encodeSave(legacyV1Save()));
+  const loaded = store.load();
+  assert.equal(loaded.saveVersion, VERSION);
+  assert.equal(store.blocked, false, '老存档绝不能让保存被锁死');
+  assert.equal(store.error, '');
+  assert.equal(store.save(loaded), true, '迁移之后必须还能继续保存');
+  assert.equal(validateSave(decodeSave(storage.getItem(KEY))), true);
 });

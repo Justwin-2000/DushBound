@@ -20,7 +20,7 @@
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
   // web/src/data.js
-  var VERSION = 1;
+  var VERSION = 2;
   var PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
   var COMBO = [{ damage: 1, cost: 8, duration: 0.28, impact: 0.08 }, { damage: 1.1, cost: 9, duration: 0.3, impact: 0.1 }, { damage: 1.5, cost: 14, duration: 0.44, impact: 0.16 }];
   var ENEMIES = {
@@ -80,17 +80,17 @@
     const n = Math.max(1, Math.floor(attack * mult * (0.95 + roll * 0.1) - defense));
     return critical ? Math.floor(n * 1.5) : n;
   }
-  var freshRun = () => ({ room: 0, wave: 0, corruption: 0, startIron: 0, rewarded: [], campUsed: false, chestUsed: false, won: false, clear: false, replay: false, salveUsed: false });
+  var freshRun = () => ({ room: 0, wave: 0, corruption: 0, startIron: 0, rewarded: [], campUsed: false, chestUsed: false, won: false, clear: false, replay: false, salveUsed: false, signState: 0, bypassUsed: false, doorOpened: false });
   function newState(settings2 = {}) {
     return {
-      saveVersion: 1,
+      saveVersion: VERSION,
       scene: "town",
       stage: 1,
       playTime: 0,
       ending: null,
       player: { x: 180, y: 350, hp: 100, maxHp: 100, stamina: 100, weapon: 0, potions: 2, facing: 1 },
       inventory: { coins: 0, iron: 0, leaf: 0, salve: 0 },
-      flags: { cloak: false, miloGift: false, leafTaken: false, memory: false, log: false, core: false, tag: false },
+      flags: { cloak: false, miloGift: false, leafTaken: false, memory: false, log: false, core: false, tag: false, letter: false, letterGiven: false },
       tutorial: { active: false, hits: 0, combo: 0, dodges: 0, blocks: 0, parries: 0, attempts: 0 },
       settings: __spreadValues(__spreadValues({}, DEFAULT_SETTINGS), settings2),
       run: freshRun(),
@@ -210,6 +210,14 @@
           this.setStage(3);
           this.toast("向右靠近木桩，点击攻击，连续衔接三段。");
           break;
+        case "deliverLetter":
+          this.s.flags.letterGiven = true;
+          this.sound("quest");
+          this.talk("伊妲", ["……是他写的。", "放在柜台下面吧。等他自己来取。"], [{ text: "离开", action: "close" }]);
+          break;
+        case "bypass":
+          this.bypassRoom();
+          break;
         case "accept":
           this.setStage(5);
           break;
@@ -264,7 +272,14 @@
         { id: "herbs", x: 4650, y: 280, label: "药草架" },
         { id: "gate", x: 7040, y: 340, label: "进入原野" }
       ];
-      const r = this.s.run, points = [{ id: "lore", x: 350, y: 270, label: r.room === 5 ? "调查破碎提灯" : r.room === 3 ? "阅读日志" : "调查遗迹" }];
+      const r = this.s.run, points = [];
+      if (r.room === 0) points.push({ id: "sign", x: 350, y: 270, label: r.signState >= 2 ? "路牌已指向东方" : "转动路牌" });
+      else points.push({ id: "lore", x: 350, y: 270, label: r.room === 5 ? "调查破碎提灯" : r.room === 3 ? "阅读日志" : "调查遗迹" });
+      if (r.room === 1) {
+        points.push({ id: "letter", x: 690, y: 320, label: this.s.flags.letter ? "抽屉已经空了" : "翻找农舍的抽屉" });
+        if (r.clear) points.push({ id: "door", x: 980, y: 300, label: r.doorOpened ? "板墙后的近路已打开" : "推开松动的板墙" });
+      }
+      if (r.room === 0 && r.signState >= 2) points.push({ id: "bypass", x: 250, y: 410, label: "沿旧车辙绕行" });
       if (r.room === 3) points.push({ id: "camp", x: 710, y: 330, label: r.campUsed ? "营火已熄" : "使用营火" });
       if (r.room === 5 && r.clear) points.push({ id: "chest", x: 1080, y: 310, label: r.chestUsed ? "空补给箱" : "开启补给箱" });
       if (r.clear) points.push({ id: "exit", x: 1400, y: 350, label: r.room === 6 ? "返回暮边镇" : "前往下一区域" });
@@ -286,7 +301,8 @@
       const s = this.s;
       if (id === "ida") {
         if (!s.flags.cloak) this.talk("伊妲", ["别急着想起一切。先确认自己的脚还听使唤。", "斗篷给你留着了。格伦就在东边的铁匠铺，他会教你怎么握剑。"], [{ text: "披上斗篷", action: "idaGift" }]);
-        else this.talk("伊妲", s.ending ? ["灯亮起来以后，客人也多了。你的房间还给你留着。"] : ["从雾里带回来的东西，不一定都该立刻示人。", "累了就回来。这里不用你付房钱。"], [{ text: "休息，恢复生命与药剂", action: "rest" }, { text: "再聊", action: "close" }]);
+        else if (s.flags.letter && !s.flags.letterGiven) this.talk("伊妲", ["你身上有别的味道——纸，还有灰。", "（你把农舍抽屉里那封信递了过去。）", "「老王麦的字。」她看了很久，「他去年说，等风车的灯再亮些就回来。」"], [{ text: "把信交给她", action: "deliverLetter" }, { text: "先自己留着", action: "close" }]);
+        else this.talk("伊妲", s.ending ? ["灯亮起来以后，客人也多了。你的房间还给你留着。"] : s.flags.letterGiven ? ["那封信我放在柜台下面了。等他来取。", "累了就回来。这里不用你付房钱。"] : ["从雾里带回来的东西，不一定都该立刻示人。", "累了就回来。这里不用你付房钱。"], [{ text: "休息，恢复生命与药剂", action: "rest" }, { text: "再聊", action: "close" }]);
       } else if (id === "glen") {
         if (!s.flags.cloak) this.talk("格伦", ["先回去见伊妲。你连斗篷都没穿好。"]);
         else if (s.stage < 4) this.talk("格伦", ["剑不是用来挥得好看。看准，再出手。", "先打木桩，接着练闪避。最后，我用木剑陪你练格挡。"], [{ text: s.tutorial.active ? "继续训练" : "开始训练", action: "train" }, { text: "稍后再来", action: "close" }]);
@@ -298,6 +314,7 @@
         else this.talk("洛恩", s.ending ? ["今晚的雾退了些。路上小心，巡界者。"] : ["沿着旧商道走。经过营火，再向风车去。"]);
       } else if (id === "milo") {
         if (!s.flags.miloGift) this.talk("米洛", ["你那盏灯……可以借我看看吗？不，先别熄灭它！", "这瓶药送你。原野会慢慢侵蚀提灯，营火能帮你缓一缓。"], [{ text: "收下药剂，查看补给", action: "miloGift" }]);
+        else if (s.flags.letter && !s.flags.letterGiven) this.talk("米洛", ["你去了废弃农舍？那边的人……搬走很久了。", "要是翻到什么写了字的纸，别急着扔。雾最会先吃掉的就是这种东西。"], [{ text: "购买补给", action: "shop" }, { text: "离开", action: "close" }]);
         else this.talk("米洛", ["药要在伤口变糟以前用。带满三瓶，就别再往包里塞啦。"], [{ text: "购买补给", action: "shop" }, { text: "离开", action: "close" }]);
       } else if (id === "bed") this.talk("晚灯旅店", ["床铺仍有余温。休息会恢复全部生命，并补至两瓶药剂。"], [{ text: "休息片刻", action: "rest" }, { text: "先不休息", action: "close" }]);
       else if (id === "board") this.emit("menu", { name: "journal" });
@@ -317,6 +334,36 @@
         if (r === 3) s.flags.log = true;
         if (r === 5) s.flags.memory = true;
         this.talk(r === 5 ? "记忆的裂隙" : "巡界手记", [ROOMS[r].lore]);
+        this.save();
+      } else if (id === "sign") {
+        const r = s.run;
+        if (r.signState >= 2) {
+          this.talk("歪倒的路牌", [ROOMS[0].lore, "路牌已经指向东方，草丛里的旧车辙清清楚楚。"]);
+          return;
+        }
+        r.signState += 1;
+        this.sound("ui");
+        if (r.signState >= 2) this.talk("歪倒的路牌", [ROOMS[0].lore, "你把路牌扶正，转向东方——风车哨站的方向。", "路牌旁边的草丛里，一条旧车辙露了出来。"], [{ text: "记下这条车辙", action: "close" }]);
+        else this.talk("歪倒的路牌", [ROOMS[0].lore, "你把路牌转向北方。那边只有更浓的雾。"]);
+        this.save();
+      } else if (id === "bypass") this.talk("旧车辙", ["车辙绕过坡地，直接通向废弃农舍的方向。", "走这条路会错过路牌一带散落的东西，但也不必把这一片清干净。"], [{ text: "沿车辙绕行", action: "bypass" }, { text: "还是先清完这一段", action: "close" }]);
+      else if (id === "letter") {
+        if (s.flags.letter) {
+          this.toast("抽屉里只剩下灰。");
+          return;
+        }
+        s.flags.letter = true;
+        this.sound("quest");
+        this.talk("褪色的信", ["抽屉最里面压着一封信，信封上写着「晚灯旅店 · 伊妲收」。", "「今年的麦子长得不好。等风车的灯再亮些，我就回镇上看你。」", "信没有寄出去。"], [{ text: "收好这封信", action: "close" }]);
+        this.save();
+      } else if (id === "door") {
+        if (s.run.doorOpened) {
+          this.toast("板墙后的近路已经打开了。");
+          return;
+        }
+        s.run.doorOpened = true;
+        this.sound("quest");
+        this.talk("农舍后墙", ["你把松动的板墙推开，墙后是一条直下河谷的兽径。", "从这里走，能少绕一段雾最浓的路。"], [{ text: "记住这条近路", action: "close" }]);
         this.save();
       } else if (id === "camp") {
         if (s.run.campUsed) this.toast("余温还在，但已经不能再为提灯添火。");
@@ -455,7 +502,8 @@
       r.wave = 0;
       r.clear = cfg.waves.length === 0;
       r.won = false;
-      r.corruption = clamp(r.corruption + Math.max(0, cfg.corruption - (r.salveUsed ? 10 : 0)), 0, 100);
+      const relief = (r.salveUsed ? 10 : 0) + (i === 2 && r.doorOpened ? 5 : 0);
+      r.corruption = clamp(r.corruption + Math.max(0, cfg.corruption - relief), 0, 100);
       if (cfg.corruption && r.salveUsed) r.salveUsed = false;
       this.s.enemies = [];
       this.projectiles = [];
@@ -479,6 +527,16 @@
     nextRoom() {
       if (this.s.scene !== "dungeon" || !this.s.run.clear || this.s.run.room >= 6) return false;
       this.loadRoom(this.s.run.room + 1);
+      return true;
+    }
+    // 转对路牌后可以沿旧车辙绕过第一个房间：不清场也能前进，但拿不到这一段的物资。
+    bypassRoom() {
+      const r = this.s.run;
+      if (this.s.scene !== "dungeon" || r.room !== 0 || r.signState < 2) return false;
+      r.bypassUsed = true;
+      this.sound("dodge");
+      this.toast("沿旧车辙绕行 · 这一段没有取到物资");
+      this.loadRoom(1);
       return true;
     }
     clearRoom() {
@@ -1065,10 +1123,10 @@
     const p = s.player, inv = s.inventory, r = s.run, t = s.tutorial;
     if (!p || ![100, 110].includes(p.maxHp) || !num(p.hp, 0, p.maxHp) || !num(p.stamina, 0, 100) || !num(p.x, 0, 7300) || !num(p.y, 170, 460) || ![-1, 1].includes(p.facing) || ![0, 1].includes(p.weapon) || !Number.isInteger(p.potions) || !num(p.potions, 0, 3)) return false;
     if (!inv || !["coins", "iron", "leaf", "salve"].every((k) => Number.isInteger(inv[k]) && num(inv[k], 0, k === "salve" ? 1 : 999))) return false;
-    if (!s.flags || !["cloak", "miloGift", "leafTaken", "memory", "log", "core", "tag"].every((k) => typeof s.flags[k] === "boolean") || ![null, "honesty", "silence"].includes(s.ending)) return false;
+    if (!s.flags || !["cloak", "miloGift", "leafTaken", "memory", "log", "core", "tag", "letter", "letterGiven"].every((k) => typeof s.flags[k] === "boolean") || ![null, "honesty", "silence"].includes(s.ending)) return false;
     if (s.stage === 10 !== Boolean(s.ending) || s.stage >= 8 && s.stage < 10 && (!s.flags.core || !s.flags.tag)) return false;
     if (!t || !["hits", "combo", "dodges", "blocks", "parries", "attempts"].every((k) => Number.isInteger(t[k]) && num(t[k], 0, 9999)) || typeof t.active !== "boolean") return false;
-    if (!r || !Number.isInteger(r.room) || !num(r.room, 0, 6) || !Number.isInteger(r.wave) || !num(r.wave, 0, 2) || !num(r.corruption, 0, 100) || !num(r.startIron, 0, 999) || !Array.isArray(r.rewarded) || !r.rewarded.every((v) => Number.isInteger(v) && num(v, 0, 6)) || !["campUsed", "chestUsed", "won", "clear", "replay", "salveUsed"].every((k) => typeof r[k] === "boolean")) return false;
+    if (!r || !Number.isInteger(r.room) || !num(r.room, 0, 6) || !Number.isInteger(r.wave) || !num(r.wave, 0, 2) || !num(r.corruption, 0, 100) || !num(r.startIron, 0, 999) || !Array.isArray(r.rewarded) || !r.rewarded.every((v) => Number.isInteger(v) && num(v, 0, 6)) || !Number.isInteger(r.signState) || !num(r.signState, 0, 2) || !["campUsed", "chestUsed", "won", "clear", "replay", "salveUsed", "bypassUsed", "doorOpened"].every((k) => typeof r[k] === "boolean")) return false;
     if (!Array.isArray(s.enemies) || s.enemies.length > 5 || s.enemies.some((e) => !ENEMIES[e.kind] || !num(e.hp, 0, ENEMIES[e.kind].hp) || !num(e.maxHp, 1, ENEMIES[e.kind].hp) || e.hp > e.maxHp || !num(e.x, 0, 1600) || !num(e.y, 170, 460) || !Number.isInteger(e.id) || !num(e.id, 0, 1e9) || !["chase", "windup", "recover", "stunned", "transition"].includes(e.state) || !num(e.timer, 0, 10) || ![1, -1].includes(e.facing) || ![1, 2].includes(e.phase) || !["transitioned", "summoned"].every((k) => typeof e[k] === "boolean") || !["parries", "attackCount"].every((k) => Number.isInteger(e[k]) && num(e[k], 0, 1e9)) || ![0, 1].includes(e.chargeStep) || !num(e.tx, 0, 1600) || !num(e.ty, 0, 460) || !num(e.flash, 0, 1) || !Array.isArray(e.history) || e.history.length > 3 || !e.history.every((m) => Object.hasOwn(BOSS_MOVES, m)) || ![...Object.keys(BOSS_MOVES), "strike"].includes(e.move))) return false;
     if (s.scene === "dungeon" && (p.x > 1600 || s.stage < 6)) return false;
     if (!num(s.playTime, 0, 1e9) || !Array.isArray(s.logs) || s.logs.length > 30 || s.logs.some((v) => typeof v !== "string" || v.length > 1e3)) return false;
@@ -1091,7 +1149,14 @@
     return JSON.parse(e.payload);
   }
   var SAVE_MIGRATIONS = {
-    // 示例：0: s => ({ ...s, saveVersion: 1, 新字段: 默认值 }),
+    // 1 -> 2：1.2.0 给第一段远征加了探索与事件——两个剧情标记（家书）与三个本次远征状态
+    // （路牌转向、是否绕行、板墙是否打开）。老存档只是缺这些字段，补默认值即可，
+    // 玩家不需要做任何事，也不会丢失任何已有进度。
+    1: (s) => __spreadProps(__spreadValues({}, s), {
+      saveVersion: 2,
+      flags: __spreadValues({ letter: false, letterGiven: false }, s.flags),
+      run: __spreadValues({ signState: 0, bypassUsed: false, doorOpened: false }, s.run)
+    })
   };
   function migrateSave(s) {
     if (!s || typeof s !== "object") return null;
@@ -1587,8 +1652,15 @@
         for (let i = 0; i < 26; i++) this.rect(75 + i * 53, 241, 3, 200, "#343842");
         this.fence(85, 242, 1290);
         this.fence(80, 444, 1270);
-      } else if (theme === "farm") this.house(690, 294, 350, 172, "herbs", false, t);
-      else if (theme === "mill") {
+      } else if (theme === "farm") {
+        this.house(690, 294, 350, 172, "herbs", false, t);
+        if (r.doorOpened) {
+          this.rect(715, 200, 46, 52, "#161d27");
+          this.rect(711, 196, 54, 5, "#9a8f7c");
+          this.poly([[707, 252], [769, 252], [779, 262], [697, 262]], "#6b6355");
+          this.glow(738, 226, 46, "#cfe0d322");
+        }
+      } else if (theme === "mill") {
         this.rect(510, 110, 500, 180, "#484650");
         for (let k = 0; k < 7; k++) this.rect(520, 120 + k * 23, 480, 3, "#383b46");
         this.rect(710, 191, 130, 105, "#252b34");
@@ -1608,9 +1680,17 @@
         }
       }
       if (theme === "road") {
-        this.rect(332, 255, 8, 65, "#827564");
-        this.poly([[312, 257], [384, 257], [393, 265], [380, 274], [312, 274]], "#a5977a");
-        this.text("王都 67 里", 351, 270, 9, "#413d3e");
+        if (r.signState >= 2) {
+          this.rect(332, 255, 8, 65, "#827564");
+          this.poly([[312, 257], [384, 257], [393, 265], [380, 274], [312, 274]], "#a5977a");
+          this.text("王都 67 里", 351, 270, 9, "#413d3e");
+          this.glow(351, 300, 58, "#e8d7a01f");
+          for (let i = 0; i < 6; i++) this.rect(190 + i * 24, 404 + Math.sin(i) * 3, 16, 3, "#5c5548");
+        } else {
+          this.line(338, 318, 366, 262, "#827564", 8);
+          this.poly([[300, 300], [372, 288], [380, 302], [306, 314]], "#8a7f6d");
+          this.text("王都 67 里", 340, 304, 9, "#3b3833");
+        }
       } else if (theme === "camp") {
         this.rect(688, 343, 47, 9, "#575459");
         this.line(689, 338, 734, 324, "#867665", 8);

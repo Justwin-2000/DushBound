@@ -289,3 +289,60 @@ test('喝药期间保留部分机动力，完成时才扣药并回血', () => {
   assert.equal(g.player.potions, 1, '完成时扣除药剂');
   assert.equal(g.player.hp, 75, '完成时恢复 35 点生命');
 });
+
+// —— 1.2.0 第一段远征的探索、事件与场景变化 ——
+test('房间 1：转正路牌才露出旧车辙，绕行可以不清场前进但拿不到物资', () => {
+  const g = expedition();
+  assert.equal(g.s.run.room, 0);
+  assert.equal(g.interactables().some(p => p.id === 'bypass'), false, '没转正路牌时不该有绕行点');
+  g.interactWith('sign'); g.dialog = null;
+  assert.equal(g.s.run.signState, 1);
+  assert.equal(g.bypassRoom(), false, '只转一次还不足以绕行');
+  g.interactWith('sign'); g.dialog = null;
+  assert.equal(g.s.run.signState, 2);
+  assert.equal(g.interactables().some(p => p.id === 'bypass'), true, '转正之后应当露出旧车辙');
+  assert.equal(g.s.run.clear, false, '此时尚未清场');
+  assert.equal(g.bypassRoom(), true, '不清场也能沿车辙前进');
+  assert.equal(g.s.run.room, 1);
+  assert.equal(g.s.run.bypassUsed, true);
+  assert.equal(g.s.inventory.coins, 0, '绕行拿不到房间 1 的奖励');
+  assert.equal(g.s.run.rewarded.includes(0), false, '绕过就不该标记为已领取');
+});
+test('房间 2：家书只能捡一次，带回镇后改变伊妲与米洛的对白', () => {
+  const g = expedition(); killRoom(g);
+  assert.equal(g.nextRoom(), true); assert.equal(g.s.run.room, 1);
+  g.interactWith('letter'); g.dialog = null;
+  assert.equal(g.s.flags.letter, true, '应当拿到家书');
+  const logs = g.s.logs.length;
+  g.interactWith('letter'); g.dialog = null;
+  assert.equal(g.s.logs.length, logs, '第二次翻抽屉不该再触发剧情');
+  g.returnTown();
+  g.s.flags.cloak = true;       // 实际流程里拿到斗篷早于进入原野
+  g.s.flags.miloGift = true;    // 米洛的赠药也是入野前就会发生的
+  g.interactWith('ida');
+  assert.ok(g.dialog.lines.some(line => line.includes('老王麦')), '伊妲应当认出这封信');
+  assert.ok(g.dialog.choices.some(choice => choice.action === 'deliverLetter'));
+  g.choose('deliverLetter');
+  assert.equal(g.s.flags.letterGiven, true);
+  g.interactWith('ida');
+  assert.ok(g.dialog.lines.some(line => line.includes('柜台下面')), '交信之后她的对白应当留下变化');
+  g.interactWith('milo');
+  assert.ok(g.dialog.choices.some(choice => choice.action === 'shop'), '交完信米洛仍然能进商店');
+});
+test('房间 2：清场后推开板墙，断桥那一房的侵蚀增长减半', () => {
+  const g = expedition(); killRoom(g); g.nextRoom();
+  assert.equal(g.s.run.clear, false);
+  assert.equal(g.interactables().some(p => p.id === 'door'), false, '没清场就没有板墙交互点');
+  killRoom(g);
+  assert.equal(g.s.run.clear, true);
+  assert.equal(g.interactables().some(p => p.id === 'door'), true, '清场后才出现板墙');
+  g.interactWith('door'); g.dialog = null;
+  assert.equal(g.s.run.doorOpened, true);
+  const before = g.s.run.corruption;
+  assert.equal(g.nextRoom(), true); assert.equal(g.s.run.room, 2);
+  assert.equal(g.s.run.corruption, before + 5, '走过兽径，断桥只加 5');
+  const control = expedition(); killRoom(control); control.nextRoom(); killRoom(control);
+  const plain = control.s.run.corruption;
+  control.nextRoom();
+  assert.equal(control.s.run.corruption, plain + 10, '没开板墙就是原本的 +10');
+});

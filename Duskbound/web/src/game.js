@@ -1,13 +1,13 @@
-import { PLAYER, COMBO, ENEMIES, BOSS_MOVES, ROOMS, TOWN, QUESTS, ENDINGS, DEFAULT_SETTINGS } from './data.js';
+import { VERSION, PLAYER, COMBO, ENEMIES, BOSS_MOVES, ROOMS, TOWN, QUESTS, ENDINGS, DEFAULT_SETTINGS } from './data.js';
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 export function damage(attack,mult=1,defense=0,roll=.5,critical=false) {const n=Math.max(1,Math.floor(attack*mult*(.95+roll*.1)-defense));return critical?Math.floor(n*1.5):n;}
-const freshRun=()=>({room:0,wave:0,corruption:0,startIron:0,rewarded:[],campUsed:false,chestUsed:false,won:false,clear:false,replay:false,salveUsed:false});
+const freshRun=()=>({room:0,wave:0,corruption:0,startIron:0,rewarded:[],campUsed:false,chestUsed:false,won:false,clear:false,replay:false,salveUsed:false,signState:0,bypassUsed:false,doorOpened:false});
 export function newState(settings={}) {return {
-  saveVersion:1,scene:'town',stage:1,playTime:0,ending:null,
+  saveVersion:VERSION,scene:'town',stage:1,playTime:0,ending:null,
   player:{x:180,y:350,hp:100,maxHp:100,stamina:100,weapon:0,potions:2,facing:1},
   inventory:{coins:0,iron:0,leaf:0,salve:0},
-  flags:{cloak:false,miloGift:false,leafTaken:false,memory:false,log:false,core:false,tag:false},
+  flags:{cloak:false,miloGift:false,leafTaken:false,memory:false,log:false,core:false,tag:false,letter:false,letterGiven:false},
   tutorial:{active:false,hits:0,combo:0,dodges:0,blocks:0,parries:0,attempts:0},
   settings:{...DEFAULT_SETTINGS,...settings},run:freshRun(),enemies:[],logs:[]
 };}
@@ -45,6 +45,8 @@ export class Game {
       case 'idaGift':this.s.flags.cloak=true;this.player.maxHp=110;this.player.hp=110;this.player.potions=Math.max(2,this.player.potions);this.setStage(2);this.toast('获得旧巡界斗篷 · 生命上限 +10');break;
       case 'rest':this.rest();break;
       case 'train':this.s.tutorial.active=true;this.player.x=1800;this.player.y=350;this.player.stamina=100;this.trainingClock=1.2;this.setStage(3);this.toast('向右靠近木桩，点击攻击，连续衔接三段。');break;
+      case 'deliverLetter':this.s.flags.letterGiven=true;this.sound('quest');this.talk('伊妲',['……是他写的。','放在柜台下面吧。等他自己来取。'],[{text:'离开',action:'close'}]);break;
+      case 'bypass':this.bypassRoom();break;
       case 'accept':this.setStage(5);break;
       case 'miloGift':if(!this.s.flags.miloGift){this.s.flags.miloGift=true;this.addPotion(1,true);this.save();}this.emit('menu',{name:'shop'});break;
       case 'shop':this.emit('menu',{name:'shop'});break;
@@ -64,7 +66,15 @@ export class Game {
     if(this.s.scene==='town')return [...TOWN.map(n=>({...n,label:`交谈 · ${n.name}`})),
       {id:'bed',x:150,y:270,label:'休息'}, {id:'board',x:470,y:300,label:'留言板'}, {id:'lamp',x:3160,y:300,label:'查看界灯'},
       {id:'herbs',x:4650,y:280,label:'药草架'}, {id:'gate',x:7040,y:340,label:'进入原野'}];
-    const r=this.s.run,points=[{id:'lore',x:350,y:270,label:r.room===5?'调查破碎提灯':r.room===3?'阅读日志':'调查遗迹'}];
+    const r=this.s.run,points=[];
+    // 房间 1 的「调查遗迹」换成可以转动的路牌：转对方向会露出绕行的旧车辙。
+    if(r.room===0)points.push({id:'sign',x:350,y:270,label:r.signState>=2?'路牌已指向东方':'转动路牌'});
+    else points.push({id:'lore',x:350,y:270,label:r.room===5?'调查破碎提灯':r.room===3?'阅读日志':'调查遗迹'});
+    if(r.room===1){
+      points.push({id:'letter',x:690,y:320,label:this.s.flags.letter?'抽屉已经空了':'翻找农舍的抽屉'});
+      if(r.clear)points.push({id:'door',x:980,y:300,label:r.doorOpened?'板墙后的近路已打开':'推开松动的板墙'});
+    }
+    if(r.room===0&&r.signState>=2)points.push({id:'bypass',x:250,y:410,label:'沿旧车辙绕行'});
     if(r.room===3)points.push({id:'camp',x:710,y:330,label:r.campUsed?'营火已熄':'使用营火'});
     if(r.room===5&&r.clear)points.push({id:'chest',x:1080,y:310,label:r.chestUsed?'空补给箱':'开启补给箱'});
     if(r.clear)points.push({id:'exit',x:1400,y:350,label:r.room===6?'返回暮边镇':'前往下一区域'});
@@ -76,7 +86,8 @@ export class Game {
     const s=this.s;
     if(id==='ida'){
       if(!s.flags.cloak)this.talk('伊妲',['别急着想起一切。先确认自己的脚还听使唤。','斗篷给你留着了。格伦就在东边的铁匠铺，他会教你怎么握剑。'],[{text:'披上斗篷',action:'idaGift'}]);
-      else this.talk('伊妲',s.ending?['灯亮起来以后，客人也多了。你的房间还给你留着。']:['从雾里带回来的东西，不一定都该立刻示人。','累了就回来。这里不用你付房钱。'],[{text:'休息，恢复生命与药剂',action:'rest'},{text:'再聊',action:'close'}]);
+      else if(s.flags.letter&&!s.flags.letterGiven)this.talk('伊妲',['你身上有别的味道——纸，还有灰。','（你把农舍抽屉里那封信递了过去。）','「老王麦的字。」她看了很久，「他去年说，等风车的灯再亮些就回来。」'],[{text:'把信交给她',action:'deliverLetter'},{text:'先自己留着',action:'close'}]);
+      else this.talk('伊妲',s.ending?['灯亮起来以后，客人也多了。你的房间还给你留着。']:s.flags.letterGiven?['那封信我放在柜台下面了。等他来取。','累了就回来。这里不用你付房钱。']:['从雾里带回来的东西，不一定都该立刻示人。','累了就回来。这里不用你付房钱。'],[{text:'休息，恢复生命与药剂',action:'rest'},{text:'再聊',action:'close'}]);
     }else if(id==='glen'){
       if(!s.flags.cloak)this.talk('格伦',['先回去见伊妲。你连斗篷都没穿好。']);
       else if(s.stage<4)this.talk('格伦',['剑不是用来挥得好看。看准，再出手。','先打木桩，接着练闪避。最后，我用木剑陪你练格挡。'],[{text:s.tutorial.active?'继续训练':'开始训练',action:'train'},{text:'稍后再来',action:'close'}]);
@@ -88,6 +99,7 @@ export class Game {
       else this.talk('洛恩',s.ending?['今晚的雾退了些。路上小心，巡界者。']:['沿着旧商道走。经过营火，再向风车去。']);
     }else if(id==='milo'){
       if(!s.flags.miloGift)this.talk('米洛',['你那盏灯……可以借我看看吗？不，先别熄灭它！','这瓶药送你。原野会慢慢侵蚀提灯，营火能帮你缓一缓。'],[{text:'收下药剂，查看补给',action:'miloGift'}]);
+      else if(s.flags.letter&&!s.flags.letterGiven)this.talk('米洛',['你去了废弃农舍？那边的人……搬走很久了。','要是翻到什么写了字的纸，别急着扔。雾最会先吃掉的就是这种东西。'],[{text:'购买补给',action:'shop'},{text:'离开',action:'close'}]);
       else this.talk('米洛',['药要在伤口变糟以前用。带满三瓶，就别再往包里塞啦。'],[{text:'购买补给',action:'shop'},{text:'离开',action:'close'}]);
     }else if(id==='bed')this.talk('晚灯旅店',['床铺仍有余温。休息会恢复全部生命，并补至两瓶药剂。'],[{text:'休息片刻',action:'rest'},{text:'先不休息',action:'close'}]);
     else if(id==='board')this.emit('menu',{name:'journal'});
@@ -95,6 +107,27 @@ export class Game {
     else if(id==='herbs'){if(!s.flags.leafTaken){s.flags.leafTaken=true;s.inventory.leaf=clamp(s.inventory.leaf+1,0,999);this.toast('获得苦叶 ×1 · 可在药草屋制成苦叶膏');this.save();}else this.toast('药草架上只剩晾晒中的叶片。');}
     else if(id==='gate'){if(s.stage<5)this.talk('东门',['先完成格伦的训练，再去界灯广场见洛恩。']);else this.talk('灰风原野',['远征中会自动保存。若倒下，界灯会带你回到旅店。','携带 '+this.player.potions+' 瓶药剂 · 长剑攻击 '+(this.player.weapon?15:12)], [{text:s.ending?'再次远征':'踏入灰风原野',action:'enter'},{text:'继续准备',action:'close'}]);}
     else if(id==='lore'){const r=s.run.room;if(r===3)s.flags.log=true;if(r===5)s.flags.memory=true;this.talk(r===5?'记忆的裂隙':'巡界手记',[ROOMS[r].lore]);this.save();}
+    else if(id==='sign'){
+      const r=s.run;
+      if(r.signState>=2){this.talk('歪倒的路牌',[ROOMS[0].lore,'路牌已经指向东方，草丛里的旧车辙清清楚楚。']);return;}
+      r.signState+=1;this.sound('ui');
+      if(r.signState>=2)this.talk('歪倒的路牌',[ROOMS[0].lore,'你把路牌扶正，转向东方——风车哨站的方向。','路牌旁边的草丛里，一条旧车辙露了出来。'],[{text:'记下这条车辙',action:'close'}]);
+      else this.talk('歪倒的路牌',[ROOMS[0].lore,'你把路牌转向北方。那边只有更浓的雾。']);
+      this.save();
+    }
+    else if(id==='bypass')this.talk('旧车辙',['车辙绕过坡地，直接通向废弃农舍的方向。','走这条路会错过路牌一带散落的东西，但也不必把这一片清干净。'],[{text:'沿车辙绕行',action:'bypass'},{text:'还是先清完这一段',action:'close'}]);
+    else if(id==='letter'){
+      if(s.flags.letter){this.toast('抽屉里只剩下灰。');return;}
+      s.flags.letter=true;this.sound('quest');
+      this.talk('褪色的信',['抽屉最里面压着一封信，信封上写着「晚灯旅店 · 伊妲收」。','「今年的麦子长得不好。等风车的灯再亮些，我就回镇上看你。」','信没有寄出去。'],[{text:'收好这封信',action:'close'}]);
+      this.save();
+    }
+    else if(id==='door'){
+      if(s.run.doorOpened){this.toast('板墙后的近路已经打开了。');return;}
+      s.run.doorOpened=true;this.sound('quest');
+      this.talk('农舍后墙',['你把松动的板墙推开，墙后是一条直下河谷的兽径。','从这里走，能少绕一段雾最浓的路。'],[{text:'记住这条近路',action:'close'}]);
+      this.save();
+    }
     else if(id==='camp'){if(s.run.campUsed)this.toast('余温还在，但已经不能再为提灯添火。');else this.talk('旧营火',['火还没有熄。你可以让身体暖起来，或为提灯净去灰雾。'],[{text:'休憩 · 恢复 40 生命',action:'healCamp'},{text:'净化 · 侵蚀降低 15',action:'cleanseCamp'}]);}
     else if(id==='chest'){if(s.run.chestUsed)this.toast('补给箱已经空了。');else {s.run.chestUsed=true;this.addPotion(1,true);s.inventory.iron=clamp(s.inventory.iron+2,0,999);this.toast('补给箱 · 灰铁 +2');this.save();}}
     else if(id==='exit'){if(s.run.room===6)this.returnTown();else this.nextRoom();}
@@ -116,12 +149,16 @@ export class Game {
   spawn(kind,x=880,y=320,hp=null){const cfg=ENEMIES[kind];const e={id:this.id++,kind,x,y,hp:hp??cfg.hp,maxHp:hp??cfg.hp,state:'chase',timer:0,facing:-1,move:'sweep',history:[],phase:1,transitioned:false,summoned:false,parries:0,attackCount:0,tx:0,ty:0,flash:0,chargeStep:0};this.s.enemies.push(e);return e;}
   loadRoom(i){
     const r=this.s.run,cfg=ROOMS[i];r.room=i;r.wave=0;r.clear=cfg.waves.length===0;r.won=false;
-    r.corruption=clamp(r.corruption+Math.max(0,cfg.corruption-(r.salveUsed?10:0)),0,100);if(cfg.corruption&&r.salveUsed)r.salveUsed=false;
+    // 苦叶膏减 10；从农舍板墙后的兽径下来能少绕一段雾最浓的路，断桥那一房再减 5。
+    const relief=(r.salveUsed?10:0)+(i===2&&r.doorOpened?5:0);
+    r.corruption=clamp(r.corruption+Math.max(0,cfg.corruption-relief),0,100);if(cfg.corruption&&r.salveUsed)r.salveUsed=false;
     this.s.enemies=[];this.projectiles=[];this.fields=[];this.effects=[];this.resetMotion();this.player.x=160;this.player.y=350;this.player.stamina=100;this.p.invincible=1;
     this.spawnWave();if(i===6)this.setStage(7);this.toast(cfg.name+' · '+cfg.hint);this.emit('region',{name:cfg.name,subtitle:cfg.subtitle});this.save();
   }
   spawnWave(){const r=this.s.run,w=ROOMS[r.room].waves[r.wave]||[];w.forEach((kind,i)=>this.spawn(kind,880+i*240,300+i*80));}
   nextRoom(){if(this.s.scene!=='dungeon'||!this.s.run.clear||this.s.run.room>=6)return false;this.loadRoom(this.s.run.room+1);return true;}
+  // 转对路牌后可以沿旧车辙绕过第一个房间：不清场也能前进，但拿不到这一段的物资。
+  bypassRoom(){const r=this.s.run;if(this.s.scene!=='dungeon'||r.room!==0||r.signState<2)return false;r.bypassUsed=true;this.sound('dodge');this.toast('沿旧车辙绕行 · 这一段没有取到物资');this.loadRoom(1);return true;}
   clearRoom(){const r=this.s.run;if(r.clear)return;const cfg=ROOMS[r.room];if(r.wave+1<cfg.waves.length){r.wave++;this.spawnWave();this.toast('下一波敌人出现');return;}
     r.clear=true;this.sound('quest');
     if(!r.rewarded.includes(r.room)){r.rewarded.push(r.room);for(const[k,n]of Object.entries(cfg.reward)){if(k==='potions')this.addPotion(n,true);else this.s.inventory[k]=clamp(this.s.inventory[k]+n,0,999);}if(Object.keys(cfg.reward).length)this.toast('区域肃清 · '+Object.entries(cfg.reward).map(([k,n])=>({coins:'旧币',iron:'灰铁',potions:'药剂'}[k]+' +'+n)).join(' / '));}
