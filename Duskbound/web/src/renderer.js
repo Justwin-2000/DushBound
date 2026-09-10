@@ -1,4 +1,4 @@
-import { TOWN, ROOMS, ENEMIES, BOSS_MOVES } from './data.js';
+import { TOWN, ROOMS, ENEMIES, BOSS_MOVES, COMBO } from './data.js';
 import { clamp } from './game.js';
 const hash=n=>{const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x);};
 export class Renderer {
@@ -110,7 +110,7 @@ export class Renderer {
   hero(g){const p=g.player,a=g.p,c=this.c;if(a.invincible>0&&Math.floor(g.time*18)%2===0)c.globalAlpha=.6;
     if(a.action==='dodge'){c.globalAlpha=.35;this.human(p.x-a.dx*26,p.y-a.dy*20,'#637888',g.time,true,'hero',p.facing);c.globalAlpha=.8;}
     this.human(p.x,p.y,'#415464',g.time,Math.hypot(g.input.x,g.input.y)>.1&&a.action==='idle','hero',p.facing,a.action);c.globalAlpha=1;
-    if(a.action==='attack'){c.save();c.translate(p.x,p.y-28);c.scale(p.facing,1);const angle=-1.15+a.elapsed/(a.combo===2?.62:.4)*2.7;c.rotate(angle);
+    if(a.action==='attack'){const cfg=COMBO[a.combo],progress=Math.min(1,a.elapsed/cfg.duration),swing=1-Math.pow(1-progress,3);c.save();c.translate(p.x,p.y-28);c.scale(p.facing,1);c.rotate(-1.15+swing*2.7);
       // 挥砍残影：半径明显大于剑尖、弧度短，避免与剑身连成一把镰刀。
       c.strokeStyle=a.combo===2?'#fff0b9':'#decfad';c.globalAlpha=.45;c.lineWidth=a.combo===2?5:4;c.beginPath();c.arc(0,0,80,-.6,-.06);c.stroke();c.globalAlpha=1;
       // 剑：刃身根部宽、向剑尖收窄并带刃口高光，配护手与剑首。

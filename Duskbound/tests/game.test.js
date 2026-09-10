@@ -80,9 +80,14 @@ test('dodge moves backward without input and protects only initial window', () =
   assert.ok(g.player.x < 500); assert.equal(g.hitPlayer(10), 'immune'); advance(g, .04);
   assert.equal(g.hitPlayer(10), 'hit'); assert.equal(g.player.hp, 92);
 });
-test('attack can only cancel into dodge after first half and has a cooldown', () => {
-  const g = makeGame(); g.attack(); advance(g, .1); assert.equal(g.dodge(), false);
-  advance(g, .12); assert.equal(g.dodge(), true); advance(g, .44); assert.equal(g.dodge(), false);
+test('attack can only cancel into dodge once the hit has landed, and dodge keeps its cooldown', () => {
+  const g = makeGame();
+  assert.equal(g.attack(), true);
+  advance(g, COMBO[0].impact * .5);
+  assert.equal(g.dodge(), false, '命中生效之前不应该能取消');
+  advance(g, COMBO[0].impact);
+  assert.equal(g.dodge(), true, '命中生效之后应该能取消');
+  advance(g, .44); assert.equal(g.dodge(), false, '闪避仍在冷却中');
   advance(g, .25); assert.equal(g.dodge(), true);
 });
 test('ordinary block takes stamina impact; perfect guard does not', () => {

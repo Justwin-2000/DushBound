@@ -22,7 +22,7 @@
   // web/src/data.js
   var VERSION = 1;
   var PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
-  var COMBO = [{ damage: 1, cost: 8, duration: 0.38, impact: 0.13 }, { damage: 1.1, cost: 9, duration: 0.42, impact: 0.16 }, { damage: 1.5, cost: 14, duration: 0.62, impact: 0.23 }];
+  var COMBO = [{ damage: 1, cost: 8, duration: 0.28, impact: 0.08 }, { damage: 1.1, cost: 9, duration: 0.3, impact: 0.1 }, { damage: 1.5, cost: 14, duration: 0.44, impact: 0.16 }];
   var ENEMIES = {
     rat: { name: "雾噬鼠", hp: 28, speed: 160, damage: 8, range: 70, windup: 0.35, recovery: 0.6, color: "#827a99" },
     dog: { name: "裂爪犬", hp: 65, speed: 190, damage: 14, range: 88, windup: 0.6, recovery: 0.85, color: "#b89a93" },
@@ -1672,11 +1672,11 @@
       this.human(p.x, p.y, "#415464", g.time, Math.hypot(g.input.x, g.input.y) > 0.1 && a.action === "idle", "hero", p.facing, a.action);
       c.globalAlpha = 1;
       if (a.action === "attack") {
+        const cfg = COMBO[a.combo], progress = Math.min(1, a.elapsed / cfg.duration), swing = 1 - Math.pow(1 - progress, 3);
         c.save();
         c.translate(p.x, p.y - 28);
         c.scale(p.facing, 1);
-        const angle = -1.15 + a.elapsed / (a.combo === 2 ? 0.62 : 0.4) * 2.7;
-        c.rotate(angle);
+        c.rotate(-1.15 + swing * 2.7);
         c.strokeStyle = a.combo === 2 ? "#fff0b9" : "#decfad";
         c.globalAlpha = 0.45;
         c.lineWidth = a.combo === 2 ? 5 : 4;
@@ -1944,6 +1944,7 @@
   var Sound = class {
     constructor() {
       this.ctx = null;
+      this.noise = null;
       this.settings = { master: 0.7, music: 0.45, sfx: 0.7 };
       this.next = 0;
       this.note = 0;
@@ -1981,9 +1982,14 @@
     }
     play(name) {
       const v = this.settings.sfx * 0.11;
-      if (name.startsWith("swing")) this.tone(400 + Number(name.at(-1) || 0) * 70, 0.13, v, "triangle", 65);
-      else if (name === "hit") this.tone(145, 0.12, v, "square", 55);
-      else if (name === "hurt") this.tone(90, 0.25, v, "sawtooth", 32);
+      if (name.startsWith("swing")) {
+        const i = Number(name.at(-1) || 0);
+        this.whoosh(0.15 + i * 0.02, v * 1.6, 1600 + i * 260, 430 + i * 110);
+        this.tone(300 + i * 50, 0.06, v * 0.3, "triangle", 150);
+      } else if (name === "hit") {
+        this.whoosh(0.07, v * 0.9, 3e3, 650);
+        this.tone(145, 0.12, v, "square", 55);
+      } else if (name === "hurt") this.tone(90, 0.25, v, "sawtooth", 32);
       else if (name === "parry") {
         this.tone(880, 0.4, v, "triangle", 1300);
         this.tone(1320, 0.5, v * 0.5);
@@ -2008,6 +2014,39 @@
       const freq = scales[this.note++ % scales.length];
       this.tone(freq, 2.5, this.settings.music * 0.1);
       this.tone(freq / 2, 3, this.settings.music * 0.05, "triangle");
+    }
+    // 挥砍是宽频噪声而不是音调：短促的带通噪声扫频才做出「嗖」的破空声。
+    // 噪声缓冲只建一次并复用，随机取一段避免每次听起来一样。
+    whoosh(duration, volume, from, to) {
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== "running" || volume <= 0 || this.settings.master <= 0) return;
+      try {
+        if (!this.noise) {
+          const length = Math.ceil(ctx.sampleRate * 0.6), buffer = ctx.createBuffer(1, length, ctx.sampleRate), data = buffer.getChannelData(0);
+          for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+          this.noise = buffer;
+        }
+        const source = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain(), now = ctx.currentTime;
+        source.buffer = this.noise;
+        filter.type = "bandpass";
+        filter.Q.value = 1.1;
+        filter.frequency.setValueAtTime(from, now);
+        filter.frequency.exponentialRampToValueAtTime(Math.max(60, to), now + duration);
+        gain.gain.setValueAtTime(1e-4, now);
+        gain.gain.exponentialRampToValueAtTime(Math.max(2e-4, volume * this.settings.master), now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(1e-4, now + duration);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        source.start(now, Math.random() * 0.4, duration + 0.04);
+        source.stop(now + duration + 0.06);
+        source.onended = () => {
+          source.disconnect();
+          filter.disconnect();
+          gain.disconnect();
+        };
+      } catch (e) {
+      }
     }
     suspend() {
       var _a2;

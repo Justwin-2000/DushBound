@@ -1,6 +1,6 @@
 export const VERSION = 1;
 export const PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
-export const COMBO = [ { damage: 1, cost: 8, duration: .38, impact: .13 }, { damage: 1.1, cost: 9, duration: .42, impact: .16 }, { damage: 1.5, cost: 14, duration: .62, impact: .23 } ];
+export const COMBO = [ { damage: 1, cost: 8, duration: .28, impact: .08 }, { damage: 1.1, cost: 9, duration: .3, impact: .1 }, { damage: 1.5, cost: 14, duration: .44, impact: .16 } ];
 export const ENEMIES = {
   rat: { name: '雾噬鼠', hp: 28, speed: 160, damage: 8, range: 70, windup: .35, recovery: .6, color: '#827a99' },
   dog: { name: '裂爪犬', hp: 65, speed: 190, damage: 14, range: 88, windup: .6, recovery: .85, color: '#b89a93' },

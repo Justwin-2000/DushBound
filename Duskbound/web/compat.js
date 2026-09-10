@@ -34,7 +34,7 @@
     document.documentElement.setAttribute('data-game-ready', 'true');
     try { if (root.AndroidBridge && root.AndroidBridge.gameReady) root.AndroidBridge.gameReady(); } catch (ignored) {}
   } };
-  deadline = setTimeout(function () { if (!initialized) fault('启动超时：游戏入口没有完成初始化（1.0.4）。'); }, 6000);
+  deadline = setTimeout(function () { if (!initialized) fault('启动超时：游戏入口没有完成初始化（1.0.5）。'); }, 6000);
   if (typeof root.globalThis === 'undefined') root.globalThis = root;
   if (!root.structuredClone) root.structuredClone = function (value) { return JSON.parse(JSON.stringify(value)); };
   if (!Array.prototype.at) Object.defineProperty(Array.prototype, 'at', { value: function (index) {
