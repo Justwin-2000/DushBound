@@ -1270,6 +1270,7 @@
       this.artCache = /* @__PURE__ */ new Map();
       this.gradients = /* @__PURE__ */ new Map();
       this.glowCache = /* @__PURE__ */ new Map();
+      this.shadeCache = null;
       this.scenery = new Image();
       this.scenery.src = "./assets/world.webp";
       this.resize();
@@ -1303,6 +1304,26 @@
     }
     // 每帧重建渐变是这里最大的固定开销：渐变对象按 (场景/画布宽) 缓存复用；
     // 光晕则预渲染成离屏精灵，用 drawImage 贴图取代「新建径向渐变 + 整块 alpha 填充」。
+    // 角色身后的柔和暗色：浅色墙面（旅店外墙、农舍）会把方块角色吃掉，
+    // 压一层柔光轮廓就立住了。做成缓存精灵，每次只花一次 drawImage。
+    shadeSprite() {
+      if (!this.shadeCache) {
+        const s = document.createElement("canvas");
+        s.width = 96;
+        s.height = 96;
+        const g = s.getContext("2d"), rg = g.createRadialGradient(48, 48, 3, 48, 48, 46);
+        rg.addColorStop(0, "rgba(9,14,24,.34)");
+        rg.addColorStop(0.55, "rgba(9,14,24,.16)");
+        rg.addColorStop(1, "rgba(9,14,24,0)");
+        g.fillStyle = rg;
+        g.fillRect(0, 0, 96, 96);
+        this.shadeCache = s;
+      }
+      return this.shadeCache;
+    }
+    shade(x, y) {
+      this.c.drawImage(this.shadeSprite(), Math.round(x - 48), Math.round(y - 48));
+    }
     grad(key, build) {
       let g = this.gradients.get(key);
       if (!g) {
@@ -1388,9 +1409,17 @@
       this.effects(g);
       c.restore();
       c.fillStyle = this.grad("vignette", () => {
-        const g2 = c.createRadialGradient(this.w / 2, 270, 160, this.w / 2, 270, this.w * 0.65);
-        g2.addColorStop(0, "#04081600");
-        g2.addColorStop(1, "#04081680");
+        const g2 = c.createRadialGradient(this.w / 2, 268, 190, this.w / 2, 268, this.w * 0.7);
+        g2.addColorStop(0, "#050a1a00");
+        g2.addColorStop(1, "#050a1a5c");
+        return g2;
+      });
+      c.fillRect(0, 0, this.w, 540);
+      c.fillStyle = this.grad("grade", () => {
+        const g2 = c.createLinearGradient(0, 0, 0, 540);
+        g2.addColorStop(0, "#ffd9a60d");
+        g2.addColorStop(0.42, "#00000000");
+        g2.addColorStop(1, "#0b17300f");
         return g2;
       });
       c.fillRect(0, 0, this.w, 540);
@@ -1401,9 +1430,8 @@
       const c = this.c, t = g.time, town = g.s.scene === "town", boss = !town && g.s.run.room === 6, phase = g.s.enemies.some((e) => e.kind === "boss" && e.phase === 2), lit = !!g.s.ending;
       c.fillStyle = this.grad("sky|" + (town ? "town" : "field") + "|" + (boss && phase ? "phase2" : "phase1"), () => {
         const g2 = c.createLinearGradient(0, 0, 0, 370);
-        g2.addColorStop(0, boss && phase ? "#151322" : "#20273a");
-        g2.addColorStop(0.55, town ? "#6c586e" : "#404353");
-        g2.addColorStop(1, town ? "#b58378" : "#6c6273");
+        const stops = boss && phase ? [[0, "#100f1a"], [0.3, "#191726"], [0.55, "#262038"], [0.78, "#342a46"], [0.92, "#3b2f4c"], [1, "#443553"]] : town ? [[0, "#1d2438"], [0.25, "#2f3350"], [0.48, "#57496a"], [0.68, "#8a6472"], [0.84, "#b58378"], [1, "#d09a7c"]] : [[0, "#1b2130"], [0.3, "#2b3243"], [0.55, "#404353"], [0.78, "#565363"], [0.92, "#6c6273"], [1, "#7d6f78"]];
+        for (const [at, color] of stops) g2.addColorStop(at, color);
         return g2;
       });
       c.fillRect(0, 0, this.w, 540);
@@ -1413,7 +1441,7 @@
         this.rect(x, 30 + hash(i) * 130, hash(i + 8) > 0.8 ? 2 : 1, 1, "#cfc8c170");
       }
       for (let layer = 0; layer < 3; layer++) {
-        const scale = [0.08, 0.16, 0.3][layer], base = [210, 245, 290][layer], color = ["#3f4054", "#323b4b", "#283440"][layer];
+        const scale = [0.08, 0.16, 0.3][layer], base = [210, 245, 290][layer], color = ["#4a4a63", "#39415a", "#2b3644"][layer];
         let points = [[-100, 400]];
         for (let x = -100; x < this.w + 150; x += 55) {
           const xx = x + this.camera * scale;
@@ -1422,6 +1450,13 @@
         points.push([this.w + 200, 400]);
         this.poly(points, color);
       }
+      c.fillStyle = this.grad("haze|" + (town ? "town" : "field") + "|" + (boss && phase ? "p2" : "p1"), () => {
+        const g2 = c.createLinearGradient(0, 170, 0, 332);
+        g2.addColorStop(0, (town ? "#c99a8a" : "#9aa0b5") + "00");
+        g2.addColorStop(1, (town ? "#d8a894" : "#a8aec2") + "3d");
+        return g2;
+      });
+      c.fillRect(0, 170, this.w, 162);
       if (this.scenery.complete && this.scenery.naturalWidth) {
         const width = this.w + 240, offset = clamp(this.camera / Math.max(1, g.worldWidth - this.w), 0, 1) * 240;
         c.drawImage(this.scenery, -offset, 0, width, 330);
@@ -1437,10 +1472,36 @@
       const millx = (town ? this.w * 0.78 : 1050) - this.camera * 0.08;
       this.windmill(millx, 250, 0.6, t * 0.18, "#383847", false);
       this.rect(0, 310, this.w, 230, town ? "#343d3e" : boss ? "#34303e" : "#32363c");
+      c.fillStyle = this.grad("ground|" + (town ? "town" : boss && phase ? "p2" : "field"), () => {
+        const g2 = c.createLinearGradient(0, 308, 0, 540);
+        g2.addColorStop(0, town ? "#3b4448" : boss ? "#3c3844" : "#3a3a41");
+        g2.addColorStop(0.34, town ? "#343d3e" : boss ? "#34303e" : "#32363c");
+        g2.addColorStop(1, town ? "#2c3437" : boss ? "#2c2831" : "#2b3034");
+        return g2;
+      });
+      c.fillRect(0, 308, this.w, 232);
       if (town) {
-        this.rect(0, 344, this.w, 82, lit ? "#727269" : "#5c5b58");
+        c.fillStyle = this.grad("road|" + (lit ? "lit" : "dim"), () => {
+          const g2 = c.createLinearGradient(0, 344, 0, 426);
+          g2.addColorStop(0, lit ? "#7d7d74" : "#64635f");
+          g2.addColorStop(0.45, lit ? "#727269" : "#5c5b58");
+          g2.addColorStop(1, lit ? "#5b5b53" : "#494846");
+          return g2;
+        });
+        c.fillRect(0, 344, this.w, 82);
         this.rect(0, 347, this.w, 3, "#8c80704d");
         this.rect(0, 424, this.w, 4, "#242e33");
+        for (let i = 0; i < 3; i++) {
+          const y = 306 + i * 24;
+          c.fillStyle = this.grad("mist|" + i, () => {
+            const g2 = c.createLinearGradient(0, y - 15, 0, y + 15);
+            g2.addColorStop(0, "#cfd8d200");
+            g2.addColorStop(0.5, "#cfd8d212");
+            g2.addColorStop(1, "#cfd8d200");
+            return g2;
+          });
+          c.fillRect(0, y - 15, this.w, 30);
+        }
       } else {
         this.rect(0, 210, this.w, 275, boss ? "#45414c" : "#44444a");
         if (g.s.run.room === 2) {
@@ -1726,6 +1787,7 @@
       }
     }
     human(x, y, color, t, moving = false, id = "hero", facing = 1, action = "idle") {
+      this.shade(x, y - 30);
       const c = this.c;
       c.save();
       c.translate(Math.round(x), Math.round(y));
