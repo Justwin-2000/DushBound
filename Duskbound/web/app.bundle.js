@@ -19,7 +19,7 @@
   };
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
-  // Dush/Duskbound/web/src/data.js
+  // web/src/data.js
   var VERSION = 1;
   var PLAYER = { hp: 100, stamina: 100, speed: 220, attack: 12, defense: 2, potionHeal: 35, potionCap: 3 };
   var COMBO = [{ damage: 1, cost: 8, duration: 0.38, impact: 0.13 }, { damage: 1.1, cost: 9, duration: 0.42, impact: 0.16 }, { damage: 1.5, cost: 14, duration: 0.62, impact: 0.23 }];
@@ -73,7 +73,7 @@
   };
   var DEFAULT_SETTINGS = { master: 0.7, music: 0.45, sfx: 0.7, shake: true, numbers: true, vibration: true, controls: 0.8, fps: 60, assist: false };
 
-  // Dush/Duskbound/web/src/game.js
+  // web/src/game.js
   var clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   var distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   function damage(attack, mult = 1, defense = 0, roll = 0.5, critical = false) {
@@ -1049,7 +1049,7 @@
     }
   };
 
-  // Dush/Duskbound/web/src/store.js
+  // web/src/store.js
   var KEY = "duskbound.save.v1";
   var num = (v, lo, hi) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
   function validateSave(s) {
@@ -1154,7 +1154,7 @@
     }
   };
 
-  // Dush/Duskbound/web/src/renderer.js
+  // web/src/renderer.js
   var hash = (n) => {
     const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
     return x - Math.floor(x);
@@ -1169,6 +1169,8 @@
       this.camera = 0;
       this.shake = 0;
       this.artCache = /* @__PURE__ */ new Map();
+      this.gradients = /* @__PURE__ */ new Map();
+      this.glowCache = /* @__PURE__ */ new Map();
       this.scenery = new Image();
       this.scenery.src = "./assets/world.webp";
       this.resize();
@@ -1179,6 +1181,7 @@
       this.canvas.width = this.w;
       this.canvas.height = 540;
       this.c.imageSmoothingEnabled = false;
+      this.gradients.clear();
     }
     rect(x, y, w, h, color) {
       this.c.fillStyle = color;
@@ -1199,12 +1202,34 @@
       c.textAlign = align;
       c.fillText(text, Math.round(x), Math.round(y));
     }
+    // 每帧重建渐变是这里最大的固定开销：渐变对象按 (场景/画布宽) 缓存复用；
+    // 光晕则预渲染成离屏精灵，用 drawImage 贴图取代「新建径向渐变 + 整块 alpha 填充」。
+    grad(key, build) {
+      let g = this.gradients.get(key);
+      if (!g) {
+        g = build();
+        this.gradients.set(key, g);
+      }
+      return g;
+    }
+    glowSprite(radius, color) {
+      const key = radius + "|" + color;
+      let sprite = this.glowCache.get(key);
+      if (!sprite) {
+        sprite = document.createElement("canvas");
+        sprite.width = sprite.height = radius * 2;
+        const g = sprite.getContext("2d"), rg = g.createRadialGradient(radius, radius, 0, radius, radius, radius);
+        rg.addColorStop(0, color);
+        rg.addColorStop(1, "rgba(255,178,90,0)");
+        g.fillStyle = rg;
+        g.fillRect(0, 0, radius * 2, radius * 2);
+        this.glowCache.set(key, sprite);
+      }
+      return sprite;
+    }
     glow(x, y, r, color) {
-      const c = this.c, g = c.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, color);
-      g.addColorStop(1, "rgba(255,178,90,0)");
-      c.fillStyle = g;
-      c.fillRect(x - r, y - r, r * 2, r * 2);
+      const radius = Math.max(1, Math.round(r));
+      this.c.drawImage(this.glowSprite(radius, color), Math.round(x - radius), Math.round(y - radius));
     }
     line(x1, y1, x2, y2, color, width = 2) {
       const c = this.c;
@@ -1263,21 +1288,25 @@
       }
       this.effects(g);
       c.restore();
-      const vignette = c.createRadialGradient(this.w / 2, 270, 160, this.w / 2, 270, this.w * 0.65);
-      vignette.addColorStop(0, "#04081600");
-      vignette.addColorStop(1, "#04081680");
-      c.fillStyle = vignette;
+      c.fillStyle = this.grad("vignette", () => {
+        const g2 = c.createRadialGradient(this.w / 2, 270, 160, this.w / 2, 270, this.w * 0.65);
+        g2.addColorStop(0, "#04081600");
+        g2.addColorStop(1, "#04081680");
+        return g2;
+      });
       c.fillRect(0, 0, this.w, 540);
       this.particles(t, s.scene === "town" ? "#ffcb89" : "#b5aec5");
       c.restore();
     }
     background(g) {
       const c = this.c, t = g.time, town = g.s.scene === "town", boss = !town && g.s.run.room === 6, phase = g.s.enemies.some((e) => e.kind === "boss" && e.phase === 2), lit = !!g.s.ending;
-      const sky = c.createLinearGradient(0, 0, 0, 370);
-      sky.addColorStop(0, boss && phase ? "#151322" : "#20273a");
-      sky.addColorStop(0.55, town ? "#6c586e" : "#404353");
-      sky.addColorStop(1, town ? "#b58378" : "#6c6273");
-      c.fillStyle = sky;
+      c.fillStyle = this.grad("sky|" + (town ? "town" : "field") + "|" + (boss && phase ? "phase2" : "phase1"), () => {
+        const g2 = c.createLinearGradient(0, 0, 0, 370);
+        g2.addColorStop(0, boss && phase ? "#151322" : "#20273a");
+        g2.addColorStop(0.55, town ? "#6c586e" : "#404353");
+        g2.addColorStop(1, town ? "#b58378" : "#6c6273");
+        return g2;
+      });
       c.fillRect(0, 0, this.w, 540);
       this.glow(this.w * 0.7, 145, 120, town ? "#e6b49e24" : "#c9bade18");
       for (let i = 0; i < 25; i++) {
@@ -1298,10 +1327,12 @@
         const width = this.w + 240, offset = clamp(this.camera / Math.max(1, g.worldWidth - this.w), 0, 1) * 240;
         c.drawImage(this.scenery, -offset, 0, width, 330);
         this.rect(0, 0, this.w, 330, town ? "#17233528" : boss && phase ? "#1b102c9c" : "#17233270");
-        const fade = c.createLinearGradient(0, 265, 0, 335);
-        fade.addColorStop(0, "#26343d00");
-        fade.addColorStop(1, town ? "#343d3e" : "#32363c");
-        c.fillStyle = fade;
+        c.fillStyle = this.grad("fade|" + (town ? "town" : "field"), () => {
+          const g2 = c.createLinearGradient(0, 265, 0, 335);
+          g2.addColorStop(0, "#26343d00");
+          g2.addColorStop(1, town ? "#343d3e" : "#32363c");
+          return g2;
+        });
         c.fillRect(0, 265, this.w, 70);
       }
       const millx = (town ? this.w * 0.78 : 1050) - this.camera * 0.08;
@@ -1773,7 +1804,7 @@
     }
   };
 
-  // Dush/Duskbound/web/src/input.js
+  // web/src/input.js
   var Input = class {
     constructor(getGame, onPause, onInteract, sound2) {
       this.getGame = getGame;
@@ -1893,7 +1924,7 @@
     }
   };
 
-  // Dush/Duskbound/web/src/audio.js
+  // web/src/audio.js
   var Sound = class {
     constructor() {
       this.ctx = null;
@@ -1972,7 +2003,7 @@
     }
   };
 
-  // Dush/Duskbound/web/src/app.js
+  // web/src/app.js
   var $ = (id) => document.getElementById(id);
   var esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   var paths = {
@@ -2538,18 +2569,21 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) backgroundPause();
     else {
+      sound.unlock();
       lastFrame = performance.now();
       accumulator = 0;
     }
   });
   window.addEventListener("native-pause", backgroundPause);
   window.addEventListener("native-resume", () => {
+    sound.unlock();
     lastFrame = performance.now();
     accumulator = 0;
   });
   window.addEventListener("pagehide", backgroundPause);
   window.addEventListener("resize", () => {
     renderer.resize();
+    renderElapsed = 1e9;
     if (window.innerWidth < window.innerHeight && !onTitle) backgroundPause();
   });
   window.addEventListener("keydown", (e) => {
@@ -2580,8 +2614,9 @@
         steps++;
       }
       processEvents();
-      if (renderElapsed >= 1 / settings.fps) {
-        renderer.draw(game, renderElapsed);
+      const frozen = game.paused || !!game.dialog || !!menu;
+      if (renderElapsed >= (frozen ? 0.5 : 1 / settings.fps)) {
+        renderer.draw(game, frozen ? 1 / 60 : renderElapsed);
         refreshHud();
         renderElapsed = 0;
       }

@@ -43,3 +43,47 @@
  .title-content>.save-info{grid-column:1;grid-row:4;align-self:center;max-width:240px;margin:0;font-size:10px;line-height:1.6}
  .title-content>.ending-badge{position:absolute;left:0;bottom:-7px;margin:0;font-size:10px;letter-spacing:0;max-width:260px}
 }
+
+/* ── 安全区底部适配 ────────────────────────────────────────────────────────
+   原先只声明了 safe-area-inset-top/left/right，没有 bottom。全面屏与手势导航
+   机型底部的手势条会压住摇杆、闪避与攻击按钮，触摸被系统抢走。这里为底部
+   控件统一叠加 bottom inset（不支持 env() 的内核取 0，等于维持原样）。
+   注意：必须镜像下面两个短屏断点，否则会覆盖掉它们的紧凑间距。 */
+:root{--safe-bottom:env(safe-area-inset-bottom,0px)}
+.joystick{bottom:calc(42px + var(--safe-bottom))}
+.action-cluster{bottom:calc(27px + var(--safe-bottom))}
+.interact-button{bottom:calc(65px + var(--safe-bottom))}
+.bottom-info{bottom:calc(18px + var(--safe-bottom))}
+@media(max-height:600px){
+ .joystick{bottom:calc(33px + var(--safe-bottom))}
+ .action-cluster{bottom:calc(23px + var(--safe-bottom))}
+ .interact-button{bottom:calc(52px + var(--safe-bottom))}
+ .bottom-info{bottom:calc(12px + var(--safe-bottom))}
+}
+@media(max-height:420px){
+ .joystick{bottom:calc(29px + var(--safe-bottom))}
+ .action-cluster{bottom:calc(18px + var(--safe-bottom))}
+ .interact-button{bottom:calc(43px + var(--safe-bottom))}
+}
+
+/* ── HUD 可读性 ───────────────────────────────────────────────────────────
+   体力条原来只有 4px 且无描边，而体力是格挡与闪避的核心资源，实测在
+   20:9 手机横屏（约 794×361 CSS 像素）上几乎看不见。加粗并补描边。 */
+.stamina{height:7px;margin-top:5px;border:1px solid #d7bc9730}
+.stamina i{background:#b6c7a3}
+
+/* 短屏（高度 ≤420px，多数 20:9 手机横屏正落在这一档）的 8px/9px 字号过小，
+   统一提到 10px；同时收窄任务条，避免它与居中的首领血条在窄屏上重叠。 */
+@media(max-height:420px){
+ .potion-button small{font-size:10px}
+ .potion-button kbd{font-size:10px}
+ .place-hud>span{font-size:10px}
+ .corruption{font-size:10px;margin-top:4px}
+ .corruption b{font-size:10px}
+ .tutorial>span{font-size:10px}
+ .tutorial strong{font-size:12px}
+ .bottom-info{font-size:10px}
+ .boss-hud small{font-size:10px}
+ .boss-hud b{font-size:11px}
+ .quest-chip{max-width:235px}
+}

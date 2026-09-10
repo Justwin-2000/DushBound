@@ -2,12 +2,16 @@ import { TOWN, ROOMS, ENEMIES, BOSS_MOVES } from './data.js';
 import { clamp } from './game.js';
 const hash=n=>{const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x);};
 export class Renderer {
-  constructor(canvas){this.canvas=canvas;this.c=canvas.getContext('2d',{alpha:false});if(!this.c)throw Error('此设备无法创建游戏画布');this.w=960;this.h=540;this.camera=0;this.shake=0;this.artCache=new Map();this.scenery=new Image();this.scenery.src='./assets/world.webp';this.resize();}
-  resize(){const rect=this.canvas.getBoundingClientRect();this.w=Math.max(640,Math.round(540*rect.width/Math.max(1,rect.height)));this.canvas.width=this.w;this.canvas.height=540;this.c.imageSmoothingEnabled=false;}
+  constructor(canvas){this.canvas=canvas;this.c=canvas.getContext('2d',{alpha:false});if(!this.c)throw Error('此设备无法创建游戏画布');this.w=960;this.h=540;this.camera=0;this.shake=0;this.artCache=new Map();this.gradients=new Map();this.glowCache=new Map();this.scenery=new Image();this.scenery.src='./assets/world.webp';this.resize();}
+  resize(){const rect=this.canvas.getBoundingClientRect();this.w=Math.max(640,Math.round(540*rect.width/Math.max(1,rect.height)));this.canvas.width=this.w;this.canvas.height=540;this.c.imageSmoothingEnabled=false;this.gradients.clear();}
   rect(x,y,w,h,color){this.c.fillStyle=color;this.c.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));}
   poly(points,color){const c=this.c;c.fillStyle=color;c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill();}
   text(text,x,y,size=13,color='#e8dfc5',align='center'){const c=this.c;c.font=`${size}px "Microsoft YaHei", sans-serif`;c.fillStyle=color;c.textAlign=align;c.fillText(text,Math.round(x),Math.round(y));}
-  glow(x,y,r,color){const c=this.c,g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'rgba(255,178,90,0)');c.fillStyle=g;c.fillRect(x-r,y-r,r*2,r*2);}
+  // 每帧重建渐变是这里最大的固定开销：渐变对象按 (场景/画布宽) 缓存复用；
+  // 光晕则预渲染成离屏精灵，用 drawImage 贴图取代「新建径向渐变 + 整块 alpha 填充」。
+  grad(key,build){let g=this.gradients.get(key);if(!g){g=build();this.gradients.set(key,g);}return g;}
+  glowSprite(radius,color){const key=radius+'|'+color;let sprite=this.glowCache.get(key);if(!sprite){sprite=document.createElement('canvas');sprite.width=sprite.height=radius*2;const g=sprite.getContext('2d'),rg=g.createRadialGradient(radius,radius,0,radius,radius,radius);rg.addColorStop(0,color);rg.addColorStop(1,'rgba(255,178,90,0)');g.fillStyle=rg;g.fillRect(0,0,radius*2,radius*2);this.glowCache.set(key,sprite);}return sprite;}
+  glow(x,y,r,color){const radius=Math.max(1,Math.round(r));this.c.drawImage(this.glowSprite(radius,color),Math.round(x-radius),Math.round(y-radius));}
   line(x1,y1,x2,y2,color,width=2){const c=this.c;c.strokeStyle=color;c.lineWidth=width;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();}
   draw(g,dt=1/60){
     const c=this.c,s=g.s,p=g.player,t=g.time;
@@ -26,11 +30,11 @@ export class Renderer {
     this.effects(g);
     c.restore();
     // A small vignette keeps the warm lamps and readable silhouettes at the center.
-    const vignette=c.createRadialGradient(this.w/2,270,160,this.w/2,270,this.w*.65);vignette.addColorStop(0,'#04081600');vignette.addColorStop(1,'#04081680');c.fillStyle=vignette;c.fillRect(0,0,this.w,540);
+    c.fillStyle=this.grad('vignette',()=>{const g=c.createRadialGradient(this.w/2,270,160,this.w/2,270,this.w*.65);g.addColorStop(0,'#04081600');g.addColorStop(1,'#04081680');return g;});c.fillRect(0,0,this.w,540);
     this.particles(t,s.scene==='town'?'#ffcb89':'#b5aec5');c.restore();
   }
   background(g){const c=this.c,t=g.time,town=g.s.scene==='town',boss=!town&&g.s.run.room===6,phase=g.s.enemies.some(e=>e.kind==='boss'&&e.phase===2),lit=!!g.s.ending;
-    const sky=c.createLinearGradient(0,0,0,370);sky.addColorStop(0,boss&&phase?'#151322':'#20273a');sky.addColorStop(.55,town?'#6c586e':'#404353');sky.addColorStop(1,town?'#b58378':'#6c6273');c.fillStyle=sky;c.fillRect(0,0,this.w,540);
+    c.fillStyle=this.grad('sky|'+(town?'town':'field')+'|'+(boss&&phase?'phase2':'phase1'),()=>{const g=c.createLinearGradient(0,0,0,370);g.addColorStop(0,boss&&phase?'#151322':'#20273a');g.addColorStop(.55,town?'#6c586e':'#404353');g.addColorStop(1,town?'#b58378':'#6c6273');return g;});c.fillRect(0,0,this.w,540);
     this.glow(this.w*.7,145,120,town?'#e6b49e24':'#c9bade18');
     for(let i=0;i<25;i++){const x=(i*153-this.camera*.05)%(this.w+100);this.rect(x,30+hash(i)*130,hash(i+8)>.8?2:1,1,'#cfc8c170');}
     for(let layer=0;layer<3;layer++){const scale=[.08,.16,.3][layer],base=[210,245,290][layer],color=['#3f4054','#323b4b','#283440'][layer];let points=[[-100,400]];for(let x=-100;x<this.w+150;x+=55){const xx=x+this.camera*scale;points.push([x,base-hash(Math.floor(xx/55)+layer*13)*(layer===2?65:85)]);}points.push([this.w+200,400]);this.poly(points,color);}
@@ -38,7 +42,7 @@ export class Renderer {
       const width=this.w+240,offset=clamp(this.camera/Math.max(1,g.worldWidth-this.w),0,1)*240;
       c.drawImage(this.scenery,-offset,0,width,330);
       this.rect(0,0,this.w,330,town?'#17233528':boss&&phase?'#1b102c9c':'#17233270');
-      const fade=c.createLinearGradient(0,265,0,335);fade.addColorStop(0,'#26343d00');fade.addColorStop(1,town?'#343d3e':'#32363c');c.fillStyle=fade;c.fillRect(0,265,this.w,70);
+      c.fillStyle=this.grad('fade|'+(town?'town':'field'),()=>{const g=c.createLinearGradient(0,265,0,335);g.addColorStop(0,'#26343d00');g.addColorStop(1,town?'#343d3e':'#32363c');return g;});c.fillRect(0,265,this.w,70);
     }
     // Distant windmill follows the far parallax layer.
     const millx=(town?this.w*.78:1050)-this.camera*.08;this.windmill(millx,250,.6,t*.18,'#383847',false);

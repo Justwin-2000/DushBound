@@ -25,6 +25,7 @@ import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -65,6 +66,8 @@ public final class MainActivity extends Activity {
     private static final int EXPORT_SAVE = 401;
     private static final int IMPORT_SAVE = 402;
     private static final int STARTUP_TIMEOUT_MS = 12000;
+    /** 上次重建 WebView 的时间戳；避免渲染进程反复被回收时陷入无限重建。 */
+    private static long lastRenderRecovery;
     private WebView webView;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ScrollView startupDiagnostic;
@@ -593,6 +596,35 @@ public final class MainActivity extends Activity {
     }
 
     private final class OfflineClient extends WebViewClient {
+        /**
+         * 渲染进程被系统回收（后台内存压力，或 ColorOS 一类厂商的清理）时，WebView 的默认
+         * 行为是直接终止整个应用进程——玩家看到的是白屏或闪退。这里返回 true 自行接管：
+         * 销毁失效的 WebView 并重建 Activity，游戏会从最近一次自动保存恢复。
+         * 若短时间内反复被回收，则退回桌面，避免重建死循环。
+         */
+        @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            if (view != null) {
+                if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+                view.destroy();
+            }
+            if (webView == view) webView = null;
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    if (isDestroyed()) return;
+                    long now = System.currentTimeMillis();
+                    if (now - lastRenderRecovery < 15000L) {
+                        Toast.makeText(MainActivity.this, "画面进程反复被系统回收，已退出。重新打开即可从最近存档继续。", Toast.LENGTH_LONG).show();
+                        finish();
+                        return;
+                    }
+                    lastRenderRecovery = now;
+                    Toast.makeText(MainActivity.this, "画面进程被系统回收，正在从最近存档恢复…", Toast.LENGTH_SHORT).show();
+                    recreate();
+                }
+            });
+            return true;
+        }
+
         @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
             beginStartup();
         }

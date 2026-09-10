@@ -119,11 +119,16 @@ $('modal-body').addEventListener('input',e=>{const k=e.target.dataset.setting;if
 $('import-file').addEventListener('change',async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>1024*1024){showToast('存档文件过大，未导入');return;}try{importSave(await f.text());}catch{showToast('无法读取这个文件');}});
 window.addEventListener('native-import',e=>{if(typeof e.detail==='string')importSave(e.detail);});window.addEventListener('native-message',e=>{if(typeof e.detail==='string')showToast(e.detail);});window.addEventListener('native-back',()=>{if(onTitle&&!menu){openMenu('settings');}else togglePause();});
 function backgroundPause(){input.clear();if(game&&!onTitle){game.pause();processEvents();saveGame();if(!menu)openMenu('pause');}sound.suspend();accumulator=0;lastFrame=performance.now();}
-document.addEventListener('visibilitychange',()=>{if(document.hidden)backgroundPause();else{lastFrame=performance.now();accumulator=0;}});window.addEventListener('native-pause',backgroundPause);window.addEventListener('native-resume',()=>{lastFrame=performance.now();accumulator=0;});window.addEventListener('pagehide',backgroundPause);window.addEventListener('resize',()=>{renderer.resize();if(window.innerWidth<window.innerHeight&&!onTitle)backgroundPause();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)backgroundPause();else{sound.unlock();lastFrame=performance.now();accumulator=0;}});window.addEventListener('native-pause',backgroundPause);window.addEventListener('native-resume',()=>{sound.unlock();lastFrame=performance.now();accumulator=0;});window.addEventListener('pagehide',backgroundPause);window.addEventListener('resize',()=>{renderer.resize();renderElapsed=1e9;if(window.innerWidth<window.innerHeight&&!onTitle)backgroundPause();});
 window.addEventListener('keydown',e=>{if(e.key==='Tab'&&menu){const focusable=[...$('modal-layer').querySelectorAll('button:not(:disabled),input,select')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 let renderElapsed=0;
 function frame(now){const dt=lastFrame?Math.min(.1,(now-lastFrame)/1000):0;lastFrame=now;renderElapsed+=dt;
-  if(game&&!onTitle){input.update(dt);accumulator+=dt;let steps=0;while(accumulator>=1/60&&steps<6){game.update(1/60);accumulator-=1/60;steps++;}processEvents();if(renderElapsed>=1/settings.fps){renderer.draw(game,renderElapsed);refreshHud();renderElapsed=0;}sound.tick(game.s.scene==='town'?'town':game.s.run.room===6?'boss':'dungeon',game.paused||!!game.dialog);}
+  if(game&&!onTitle){input.update(dt);accumulator+=dt;let steps=0;while(accumulator>=1/60&&steps<6){game.update(1/60);accumulator-=1/60;steps++;}processEvents();
+    // 暂停、对话或菜单期间画面是静态的，把重绘降到 2 FPS：省掉空跑整帧的开销（菜单层
+    // 还带 backdrop-filter 模糊），同时保留自愈能力——画布被 resize 或切后台清空后能自己画回来。
+    const frozen=game.paused||!!game.dialog||!!menu;
+    if(renderElapsed>=(frozen?.5:1/settings.fps)){renderer.draw(game,frozen?1/60:renderElapsed);refreshHud();renderElapsed=0;}
+    sound.tick(game.s.scene==='town'?'town':game.s.run.room===6?'boss':'dungeon',game.paused||!!game.dialog);}
   else{sound.tick('title',!!menu);accumulator=0;}
   requestAnimationFrame(frame);
 }
