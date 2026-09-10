@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const output = fileURLToPath(new URL('./output/', import.meta.url));
 mkdirSync(output, { recursive: true });
-const report = { testedAt: new Date().toISOString(), browser: 'Microsoft Edge headless / Playwright', origin: 'http://localhost:4173', scenarios: [], errors: [], layouts: [], warnings: [] };
+const report = { testedAt: new Date().toISOString(), browser: 'Microsoft Edge headless / Playwright', origin: 'http://localhost:4173/prologue.html', scenarios: [], errors: [], layouts: [], warnings: [] };
 const browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
 function monitor(page, name) {
   page.setDefaultTimeout(12000);
@@ -70,11 +70,25 @@ await scenario('map travel to smith and actual attack/dodge/guard training', asy
   await page.keyboard.down('j'); await page.waitForTimeout(1750); await page.keyboard.up('j');
   await page.waitForTimeout(750);
   assert.match(await page.locator('#tutorial-text').textContent(), /闪避/);
-  await page.keyboard.down('d'); await page.waitForTimeout(50); await page.keyboard.press('k'); await page.waitForTimeout(440); await page.keyboard.up('d');
-  await page.waitForTimeout(300);
-  await page.keyboard.down('a'); await page.waitForTimeout(50); await page.keyboard.press('k'); await page.waitForTimeout(440); await page.keyboard.up('a');
-  await page.waitForTimeout(300); await page.keyboard.down('l');
-  await page.waitForFunction(() => document.querySelector('#tutorial-text').textContent.includes('完美格挡'));
+  for (const direction of ['d', 'a']) {
+    // Read the visible ready state, rather than assuming wall-clock sleeps
+    // equal simulated cooldown time when a headless frame is delayed.
+    await page.waitForFunction(() => document.querySelector('#dodge').style.opacity === '1');
+    await page.keyboard.down(direction); await page.waitForTimeout(100);
+    await page.keyboard.press('k');
+    await page.waitForFunction(() => document.querySelector('#dodge').style.opacity === '0.5');
+    await page.keyboard.up(direction);
+    await page.waitForFunction(() => document.querySelector('#dodge').style.opacity === '1');
+  }
+  assert.doesNotMatch(await page.locator('#tutorial-text').textContent(), /闪避/, 'both dodge inputs must have been accepted');
+  // The combo and two dodges spend stamina. Wait for the visible meter before
+  // holding through the trainer's full period, otherwise guard can exhaust.
+  await page.waitForFunction(() => parseFloat(document.querySelector('#stamina-fill').style.width) >= 65);
+  await page.keyboard.down('l');
+  // Holding guard may first land a perfect guard and then an ordinary block,
+  // completing both objectives without ever showing the intermediate hint.
+  try { await page.waitForFunction(() => document.querySelector('#tutorial-text').textContent.includes('完美格挡') || !document.querySelector('#dialog-layer').classList.contains('hidden')); }
+  catch (error) { await page.keyboard.up('l'); await page.locator('#pause').click(); const diagnostic=await readSave(page); throw Error(`${error.message}; hint=${await page.locator('#tutorial-text').textContent()}; player=${JSON.stringify(diagnostic.player)}; tutorial=${JSON.stringify(diagnostic.tutorial)}`); }
   await page.keyboard.up('l');
   // Normal key presses only. Vary the rhythm to avoid aliasing exactly with the
   // trainer period when the OS/browser scheduler delays a frame.

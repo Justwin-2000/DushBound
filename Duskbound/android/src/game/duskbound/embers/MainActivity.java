@@ -386,7 +386,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void gameReady() {
             runOnUiThread(new Runnable() {
                 @Override public void run() {
-                    if (webView == null || isDestroyed() || !START_URL.equals(webView.getUrl())) return;
+                    if (webView == null || isDestroyed() || !isGamePage(webView.getUrl())) return;
                     // Only the game can acknowledge successful handler binding and initialization.
                     // onPageFinished merely means HTML loading ended, including failed scripts.
                     pageReady = true;
@@ -630,7 +630,7 @@ public final class MainActivity extends Activity {
         }
 
         @Override public void onPageFinished(WebView view, String url) {
-            documentLoaded = START_URL.equals(url);
+            documentLoaded = isGamePage(url);
             updateStartupDiagnostic();
         }
 
@@ -672,6 +672,10 @@ public final class MainActivity extends Activity {
             recordResourceError("资源状态 " + response.getStatusCode() + "：" + request.getUrl().toString(), startupEpoch);
             if (request.isForMainFrame()) showStartupDiagnostic("游戏入口资源返回了错误状态。");
         }
+    }
+
+    private static boolean isGamePage(String url) {
+        return START_URL.equals(url) || ("https://" + HOST + "/assets/prologue.html").equals(url);
     }
 
     private static boolean isLocalAsset(Uri uri) {

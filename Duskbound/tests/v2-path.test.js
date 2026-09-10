@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {nextWaypoint,moveCircle,distance,visible} from '../web/src/v2/geometry.js';
+import {ROOM,WEAPONS,CLASSES} from '../web/src/v2/data.js';
+import {REGIONS,RELICS,EVENTS,QUESTS,BOSSES,ENDINGS} from '../web/src/v2/roadmap.js';
+test('enemy path escapes wall corner even when player goal lies in larger enemy exclusion radius',()=>{const start={x:181.94,y:121},goal={x:229.82,y:121};let distanceMoved=0;for(let i=0;i<400&&!visible(start,goal,ROOM.walls,2.5);i++){const p=nextWaypoint(start,goal,ROOM.walls,8),a=Math.atan2(p.y-start.y,p.x-start.x),old={...start};moveCircle(start,Math.cos(a)*.5,Math.sin(a)*.5,ROOM.walls,ROOM.bounds,8);distanceMoved+=distance(start,old);}assert.ok(distanceMoved>30);assert.ok(visible(start,goal,ROOM.walls,2.5));});
+test('production catalog is complete and distinguishes actual sample from planned content',()=>{assert.equal(Object.keys(WEAPONS).length,24);assert.equal(Object.values(WEAPONS).filter(w=>w.implemented).length,4);assert.equal(CLASSES.filter(c=>c.implemented).length,1);assert.equal(REGIONS.reduce((n,r)=>n+r.normal.length+r.special.length+1,0),27);assert.equal(RELICS.length,12);assert.equal(EVENTS.length,8);assert.equal(QUESTS.length,8);assert.equal(BOSSES.length,4);assert.equal(ENDINGS.length,3);assert.equal([...REGIONS,...RELICS,...EVENTS,...QUESTS,...BOSSES,...ENDINGS].some(x=>x.implemented),false);});

@@ -2,11 +2,11 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'file:///C:/U
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-const base=process.env.DUSKBOUND_TEST_ORIGIN||'http://localhost:4173';
+const base=process.env.DUSKBOUND_TEST_ORIGIN||'http://localhost:4173/prologue.html';
 const output=fileURLToPath(new URL('./output/',import.meta.url));mkdirSync(output,{recursive:true});
-const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
+const html=readFileSync(new URL('../web/prologue.html',import.meta.url),'utf8');
 const scripts=[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/g)].map(m=>m[1]);
-const entry=scripts.at(-1),entryUrl=new URL(entry,base+'/').href;
+const entry=scripts.at(-1),entryUrl=new URL(entry,base).href;
 const report={testedAt:new Date().toISOString(),environment:'Latest Edge with missing API fixtures; does NOT emulate Chrome 58 parsing or Android WebView',entry,cases:[]};
 const browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_PATH||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
 async function scenario(name,setup,check,viewport={width:844,height:390}){
