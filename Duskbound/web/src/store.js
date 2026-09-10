@@ -19,15 +19,60 @@ export function validateSave(s) {
 }
 function checksum(s) { let h=2166136261; for (let i=0;i<s.length;i++) h=Math.imul(h^s.charCodeAt(i),16777619); return (h>>>0).toString(16); }
 export function encodeSave(s) { const payload=JSON.stringify(s); return JSON.stringify({checksum:checksum(payload),payload}); }
-export function decodeSave(raw) { const e=JSON.parse(raw); if(typeof e.payload!=='string'||checksum(e.payload)!==e.checksum)throw Error('存档校验失败'); const s=JSON.parse(e.payload); if(!validateSave(s))throw Error('存档版本或内容无效'); return s; }
+function parseSave(raw) { const e=JSON.parse(raw); if(typeof e.payload!=='string'||checksum(e.payload)!==e.checksum)throw Error('存档校验失败'); return JSON.parse(e.payload); }
+
+// 每个条目把 saveVersion=N 的存档升级到 N+1。**把 data.js 的 VERSION 加一之前，
+// 必须在这里补上对应步骤**：否则老存档会被 validateSave 判定为无效，而 load() 会把
+// blocked 置位，玩家之后再也无法保存进度——那是这个文件唯一会毁数据的路径。
+export const SAVE_MIGRATIONS = {
+  // 示例：0: s => ({ ...s, saveVersion: 1, 新字段: 默认值 }),
+};
+
+/** 逐级迁移到当前 VERSION。返回 null 表示无法迁移：缺少对应步骤，或存档来自更新的版本。 */
+export function migrateSave(s) {
+  if (!s || typeof s !== 'object') return null;
+  let version = Number.isInteger(s.saveVersion) ? s.saveVersion : 0;
+  if (version > VERSION) return null;
+  while (version < VERSION) {
+    const step = SAVE_MIGRATIONS[version];
+    if (typeof step !== 'function') return null;
+    const next = step(s);
+    if (!next || !Number.isInteger(next.saveVersion) || next.saveVersion <= version) return null;
+    s = next; version = next.saveVersion;
+  }
+  return s;
+}
+export function decodeSave(raw) {
+  const migrated = migrateSave(parseSave(raw));
+  if (!migrated || !validateSave(migrated)) throw Error('存档版本或内容无效');
+  return migrated;
+}
 export class SaveStore {
   constructor(storage) { this.storage=storage; this.error=''; this.recovered=false; this.blocked=false; }
   load() {
-    this.error=''; this.recovered=false; let main,backup;
-    try {main=this.storage.getItem(KEY); backup=this.storage.getItem(KEY+'.backup');} catch {this.error='此设备暂时无法读取存档。进度仍可在本次游玩中保留。'; return null;}
-    if(!main&&!backup)return null;
-    for(const [i,raw]of [main,backup].entries()) { if(!raw)continue;try {const s=decodeSave(raw); this.recovered=i===1; this.blocked=false; return s;}catch{} }
-    this.blocked=true;this.error='存档损坏，备份也无法恢复。原始数据已保留；可导入备份，或确认开始新旅程。';return null;
+    this.error=''; this.recovered=false;
+    let candidates;
+    // 第三顺位是 .pending：save() 在写入成功后才会删掉它，所以残留的 .pending
+    // 一定来自一次中断的写入，可以作为主档与备份都不可用时的最后一条恢复路径。
+    try { candidates=[this.storage.getItem(KEY),this.storage.getItem(KEY+'.backup'),this.storage.getItem(KEY+'.pending')]; }
+    catch { this.error='此设备暂时无法读取存档。进度仍可在本次游玩中保留。'; return null; }
+    if(candidates.every(raw=>!raw)) return null;
+    let newer=false;
+    for(const [i,raw]of candidates.entries()) {
+      if(!raw)continue;
+      try {
+        const parsed=parseSave(raw), migrated=migrateSave(parsed);
+        if(!migrated) { if(Number.isInteger(parsed?.saveVersion)&&parsed.saveVersion>VERSION)newer=true; continue; }
+        if(!validateSave(migrated))continue;
+        this.recovered=i>0; this.blocked=false; return migrated;
+      }catch{}
+    }
+    // 来自更新版本的存档：不当作"损坏"，但同样不能覆盖它——那才是真正的丢档。
+    this.blocked=true;
+    this.error=newer
+      ? '存档来自更新的游戏版本，已原样保留。请升级到更新的版本再继续，或导入一份备份。'
+      : '存档损坏，备份也无法恢复。原始数据已保留；可导入备份，或确认开始新旅程。';
+    return null;
   }
   save(s) {
     if(this.blocked)return false;
@@ -35,7 +80,9 @@ export class SaveStore {
       if(!validateSave(s))throw Error('存档字段验证失败');
       const next=encodeSave(s), prev=this.storage.getItem(KEY);
       this.storage.setItem(KEY+'.pending',next); decodeSave(this.storage.getItem(KEY+'.pending'));
-      if(prev){try{decodeSave(prev);this.storage.setItem(KEY+'.backup',prev);}catch{}}
+      // 首次保存也要写备份：否则主档一坏就没有任何可回退的副本。
+      if(prev){try{decodeSave(prev);this.storage.setItem(KEY+'.backup',prev);}catch{this.storage.setItem(KEY+'.backup',next);}}
+      else this.storage.setItem(KEY+'.backup',next);
       this.storage.setItem(KEY,next); this.storage.removeItem(KEY+'.pending');this.error='';return true;
     } catch {this.error='自动保存暂时失败，当前进度仍在。可从设置导出备份。';return false;}
   }

@@ -1,8 +1,8 @@
-APK: 暮边镇-1.1.1.apk
+﻿APK: 暮边镇-1.1.1.apk
 Version: 1.1.1 (8)
-Built UTC: 2026-09-10T06:53:35
-Assets: D:\Interested_Projects\Duskbound\web
-SHA256: d001a1ba76cd8e6814e31a89bee840dd549c275b4c4dfbfe93df02c028fced9d
+Built UTC: 2026-09-10T07:09:52
+Assets: D:\Workspace\Deepseek_dsh\Dush\Duskbound\web
+SHA256: 732e49e83f664f375a7d576a239842d279ccb72617d656735d7082b787461a9a
 
 SIGNATURE
 Verifies

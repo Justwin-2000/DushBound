@@ -1085,12 +1085,32 @@
     const payload = JSON.stringify(s);
     return JSON.stringify({ checksum: checksum(payload), payload });
   }
-  function decodeSave(raw) {
+  function parseSave(raw) {
     const e = JSON.parse(raw);
     if (typeof e.payload !== "string" || checksum(e.payload) !== e.checksum) throw Error("存档校验失败");
-    const s = JSON.parse(e.payload);
-    if (!validateSave(s)) throw Error("存档版本或内容无效");
+    return JSON.parse(e.payload);
+  }
+  var SAVE_MIGRATIONS = {
+    // 示例：0: s => ({ ...s, saveVersion: 1, 新字段: 默认值 }),
+  };
+  function migrateSave(s) {
+    if (!s || typeof s !== "object") return null;
+    let version = Number.isInteger(s.saveVersion) ? s.saveVersion : 0;
+    if (version > VERSION) return null;
+    while (version < VERSION) {
+      const step = SAVE_MIGRATIONS[version];
+      if (typeof step !== "function") return null;
+      const next = step(s);
+      if (!next || !Number.isInteger(next.saveVersion) || next.saveVersion <= version) return null;
+      s = next;
+      version = next.saveVersion;
+    }
     return s;
+  }
+  function decodeSave(raw) {
+    const migrated = migrateSave(parseSave(raw));
+    if (!migrated || !validateSave(migrated)) throw Error("存档版本或内容无效");
+    return migrated;
   }
   var SaveStore = class {
     constructor(storage2) {
@@ -1102,27 +1122,32 @@
     load() {
       this.error = "";
       this.recovered = false;
-      let main, backup;
+      let candidates;
       try {
-        main = this.storage.getItem(KEY);
-        backup = this.storage.getItem(KEY + ".backup");
+        candidates = [this.storage.getItem(KEY), this.storage.getItem(KEY + ".backup"), this.storage.getItem(KEY + ".pending")];
       } catch (e) {
         this.error = "此设备暂时无法读取存档。进度仍可在本次游玩中保留。";
         return null;
       }
-      if (!main && !backup) return null;
-      for (const [i, raw] of [main, backup].entries()) {
+      if (candidates.every((raw) => !raw)) return null;
+      let newer = false;
+      for (const [i, raw] of candidates.entries()) {
         if (!raw) continue;
         try {
-          const s = decodeSave(raw);
-          this.recovered = i === 1;
+          const parsed = parseSave(raw), migrated = migrateSave(parsed);
+          if (!migrated) {
+            if (Number.isInteger(parsed == null ? void 0 : parsed.saveVersion) && parsed.saveVersion > VERSION) newer = true;
+            continue;
+          }
+          if (!validateSave(migrated)) continue;
+          this.recovered = i > 0;
           this.blocked = false;
-          return s;
+          return migrated;
         } catch (e) {
         }
       }
       this.blocked = true;
-      this.error = "存档损坏，备份也无法恢复。原始数据已保留；可导入备份，或确认开始新旅程。";
+      this.error = newer ? "存档来自更新的游戏版本，已原样保留。请升级到更新的版本再继续，或导入一份备份。" : "存档损坏，备份也无法恢复。原始数据已保留；可导入备份，或确认开始新旅程。";
       return null;
     }
     save(s) {
@@ -1137,8 +1162,9 @@
             decodeSave(prev);
             this.storage.setItem(KEY + ".backup", prev);
           } catch (e) {
+            this.storage.setItem(KEY + ".backup", next);
           }
-        }
+        } else this.storage.setItem(KEY + ".backup", next);
         this.storage.setItem(KEY, next);
         this.storage.removeItem(KEY + ".pending");
         this.error = "";

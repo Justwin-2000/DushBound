@@ -436,6 +436,38 @@ public final class MainActivity extends Activity {
 
     private File exportCache() { return new File(getCacheDir(), "pending-save-export.json"); }
 
+    /**
+     * 回读刚写入的文档，逐字节与写入内容比对。
+     *
+     * SAF 的目标 URI 只能拿到一个输出流，做不了「临时文件 + 改名」的原子替换，所以
+     * 唯一能保证备份可用的办法是写后校验：拷贝被中断、被提供方截断时这里会抛错，
+     * 玩家会看到失败提示，而不是拿着一份截断的备份却以为导出成功。
+     *
+     * 返回 false 表示提供方不允许回读（无法校验，但这不代表写入失败）；内容不一致
+     * 会抛 IOException。
+     */
+    private boolean verifyExportedDocument(Uri uri, byte[] expected) throws IOException {
+        final InputStream input;
+        try {
+            input = getContentResolver().openInputStream(uri);
+        } catch (SecurityException | java.io.FileNotFoundException notReadable) {
+            return false;
+        }
+        if (input == null) return false;
+        try (InputStream stream = input) {
+            byte[] chunk = new byte[8192];
+            int index = 0, read;
+            while ((read = stream.read(chunk)) != -1) {
+                for (int i = 0; i < read; i++) {
+                    if (index >= expected.length || chunk[i] != expected[index]) throw new IOException("回读内容与写入内容不一致，备份可能不完整");
+                    index++;
+                }
+            }
+            if (index != expected.length) throw new IOException("回读长度与写入长度不一致，备份可能不完整");
+        }
+        return true;
+    }
+
     private boolean beginDocumentRequest(int request) {
         if (isFinishing() || isDestroyed() || !activityResumed) return false;
         if (pendingDocumentRequest != 0) {
@@ -464,6 +496,7 @@ public final class MainActivity extends Activity {
                             intent.addCategory(Intent.CATEGORY_OPENABLE);
                             intent.setType("application/json");
                             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                             intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
                             String date = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
                             intent.putExtra(Intent.EXTRA_TITLE, "暮边镇-存档-" + date + ".json");
@@ -516,12 +549,15 @@ public final class MainActivity extends Activity {
                         try (InputStream input = new FileInputStream(exportCache())) {
                             content = SaveFileCodec.read(input);
                         }
+                        final byte[] encoded = SaveFileCodec.encode(content);
                         try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
                             if (output == null) throw new IOException("文件无法写入");
-                            output.write(SaveFileCodec.encode(content));
+                            output.write(encoded);
                             output.flush();
+                            if (output instanceof FileOutputStream) ((FileOutputStream) output).getFD().sync();
                         }
-                        finishFileOperation("存档备份已导出", true);
+                        boolean verified = verifyExportedDocument(uri, encoded);
+                        finishFileOperation(verified ? "存档备份已导出，并已回读校验" : "存档备份已导出", true);
                     } else {
                         final String content;
                         try (InputStream input = getContentResolver().openInputStream(uri)) {
