@@ -220,3 +220,67 @@ for (const ending of ['honesty', 'silence']) test(`simulated narrative flow reac
   const coins = g.s.inventory.coins; g.bossVictory(); assert.equal(g.s.inventory.coins, coins);
   assert.equal(validateSave(g.s), true);
 });
+
+// —— 1.0.4 手感修复的回归测试 ——
+test('输入层：单击只挥一次，按住才衔接连击', async () => {
+  const savedDocument = globalThis.document, savedWindow = globalThis.window;
+  try {
+    const handlers = new Map();
+    const element = (id) => ({
+      style: {}, classList: { add() {}, remove() {} },
+      addEventListener: (type, fn) => handlers.set(`${id}:${type}`, fn),
+      setPointerCapture() {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 120, height: 120 })
+    });
+    globalThis.document = { getElementById: element, querySelectorAll: () => [] };
+    globalThis.window = { addEventListener() {} };
+    const { Input } = await import('../web/src/input.js');
+    let attacks = 0;
+    const game = { input: { x: 0, y: 0 }, attack() { attacks++; }, dodge() {}, potion() {}, block() {} };
+    const input = new Input(() => game, () => {}, () => {}, { unlock() {} });
+    handlers.get('attack:pointerdown')({ preventDefault() {}, pointerId: 1 });
+    assert.equal(attacks, 1, '按下即攻击一次');
+    for (let i = 0; i < 10; i++) input.update(1 / 60);   // 约 0.17 秒的轻点
+    assert.equal(attacks, 1, '一次轻点不应该挥出第二刀（曾经按住连发的初始计时为 0，下一帧立刻补一刀）');
+    for (let i = 0; i < 40; i++) input.update(1 / 60);   // 继续按住约 0.67 秒
+    assert.ok(attacks >= 2, '一直按住时应该衔接连击');
+  } finally {
+    globalThis.document = savedDocument; globalThis.window = savedWindow;
+  }
+});
+test('小镇里角色被限制在路面范围内，不会走进山峦或走出地面', () => {
+  const g = makeGame();
+  g.input = { x: 0, y: -1, block: false };
+  advance(g, 10);
+  assert.ok(g.player.y >= 325, `向上不应该越过地平面：y=${g.player.y}`);
+  g.input = { x: 0, y: 1, block: false };
+  advance(g, 10);
+  assert.ok(g.player.y <= 450, `向下不应该走出地面：y=${g.player.y}`);
+  assert.equal(g.s.scene, 'town');
+});
+test('攻击命中后可以用闪避或格挡取消收招，命中前不可以', () => {
+  const early = expedition(); early.s.enemies = [];
+  assert.equal(early.attack(), true); assert.equal(early.p.action, 'attack');
+  assert.equal(early.dodge(), false, '命中生效之前不应该能取消');
+  advance(early, COMBO[0].impact + 1 / 60);
+  assert.equal(early.dodge(), true, '命中之后应该可以用闪避取消');
+  const late = expedition(); late.s.enemies = [];
+  assert.equal(late.attack(), true); late.block(true);
+  assert.equal(late.p.action, 'attack', '命中之前举盾不应该取消攻击');
+  advance(late, COMBO[0].impact + 1 / 60);
+  late.block(true);
+  assert.equal(late.p.action, 'block', '命中之后应该可以用格挡取消收招');
+});
+test('喝药期间保留部分机动力，完成时才扣药并回血', () => {
+  const g = makeGame();
+  g.player.hp = 40; g.player.potions = 2;
+  assert.equal(g.potion(), true); assert.equal(g.p.action, 'potion');
+  const startX = g.player.x;
+  g.input = { x: 1, y: 0, block: false };
+  advance(g, .2);
+  assert.ok(g.player.x > startX, '喝药期间应该可以缓慢移动');
+  assert.equal(g.player.potions, 2, '动作完成前不扣药剂');
+  advance(g, .3);
+  assert.equal(g.player.potions, 1, '完成时扣除药剂');
+  assert.equal(g.player.hp, 75, '完成时恢复 35 点生命');
+});

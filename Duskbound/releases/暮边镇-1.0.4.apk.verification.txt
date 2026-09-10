@@ -1,0 +1,43 @@
+﻿APK: 暮边镇-1.0.4.apk
+Version: 1.0.4 (5)
+Built UTC: 2026-09-10T02:08:54
+Assets: D:\Workspace\Deepseek_dsh\Dush\Duskbound\web
+SHA256: 10f025988dee2b0acb049d27a43f3b7bc19d0ac368b72b07bbbed94f04cc2d6f
+
+SIGNATURE
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Duskbound Local Development, O=Duskbound, C=CN
+Signer #1 certificate SHA-256 digest: 35e465c3b48277097bcb7a4beebdad4435bcc71b8fc2c5246c2d81edce9bc206
+Signer #1 certificate SHA-1 digest: 127ec677c5b98464b7b078b92dd0bdf5015d9349
+Signer #1 certificate MD5 digest: d3ccd7a8c49d79372dfe93fa25c63396
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: a4e9d2b6a5139d5c9864c7318e803c0701125723a855011686304f90c797ebc1
+Signer #1 public key SHA-1 digest: bd229a2155f2a6a177c324f08ade1757f8481470
+Signer #1 public key MD5 digest: e10a659343e8e4ab33aa903344b52771
+
+MANIFEST
+package: name='game.duskbound.embers' versionCode='5' versionName='1.0.4' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
+minSdkVersion:'26'
+targetSdkVersion:'35'
+uses-permission: name='android.permission.VIBRATE'
+application-label:'暮边镇'
+application-icon-160:'res/drawable/ic_launcher.xml'
+application: label='暮边镇' icon='res/drawable/ic_launcher.xml'
+launchable-activity: name='game.duskbound.embers.MainActivity'  label='' icon=''
+feature-group: label=''
+  uses-feature-not-required: name='android.hardware.touchscreen'
+  uses-feature: name='android.hardware.screen.landscape'
+  uses-implied-feature: name='android.hardware.screen.landscape' reason='one or more activities have specified a landscape orientation'
+main
+supports-screens: 'small' 'normal' 'large' 'xlarge'
+supports-any-density: 'true'
+locales: '--_--'
+densities: '160'

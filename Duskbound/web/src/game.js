@@ -24,6 +24,8 @@ export class Game {
     if(this.s.player.hp<=0)this.fail();
   }
   get player(){return this.s.player;} get worldWidth(){return this.s.scene==='town'?7300:1520;}
+  // 小镇的路面在 y=344..426、地平面自 310 起；原先 205 的下限会让角色走到山峦与天空里。
+  bounds(){return this.s.scene==='town'?{minY:325,maxY:450}:{minY:205,maxY:440};}
   emit(type,data={}){this.events.push({type,...data});}
   toast(text){this.emit('toast',{text});}
   sound(name){this.emit('sound',{name});}
@@ -153,14 +155,16 @@ export class Game {
     if(Math.hypot(this.input.x,this.input.y)<.15){const near=this.s.enemies.filter(e=>distance(e,this.player)<160).sort((a,b)=>distance(a,this.player)-distance(b,this.player))[0];if(near)this.player.facing=near.x>=this.player.x?1:-1;}
     this.sound('swing'+combo);return true;
   }
-  dodge(){if(!this.canAct()||this.p.dodgeCooldown>0)return false;const a=this.p.action;if(!['idle','block','attack','potion'].includes(a)||(a==='attack'&&this.p.elapsed<COMBO[this.p.combo].duration*.5))return false;if(!this.spend(24))return false;
+  dodge(){if(!this.canAct()||this.p.dodgeCooldown>0)return false;const a=this.p.action;if(!['idle','block','attack','potion'].includes(a)||(a==='attack'&&this.p.elapsed<COMBO[this.p.combo].impact))return false;if(!this.spend(24))return false;
     let {x,y}=this.input,n=Math.hypot(x,y);if(n<.1){x=-this.player.facing;y=0;n=1;}this.p.dx=x/n;this.p.dy=y/n;this.p.action='dodge';this.p.elapsed=0;this.p.timer=.42;this.p.dodgeCooldown=.67;this.p.invincible=Math.max(.22,this.p.invincible);this.p.queue=false;
     if(this.s.tutorial.active){this.s.tutorial.dodges++;this.checkTutorial();}this.sound('dodge');return true;
   }
   block(down){this.input.block=down;if(!down){if(this.p.action==='block')this.p.action='idle';return;}
-    if(!this.canAct()||!['idle','block'].includes(this.p.action)||this.player.stamina<=0)return;
+    // 攻击命中之后即可举盾：允许用格挡取消收招，而不是被钉在原地。
+    const recovering=this.p.action==='attack'&&this.p.elapsed>=COMBO[this.p.combo].impact;
+    if(!this.canAct()||(!recovering&&!['idle','block'].includes(this.p.action))||this.player.stamina<=0)return;
     if(this.p.action!=='block'){this.p.action='block';this.p.blockAge=0;} }
-  potion(){if(!this.canAct()||!['idle','block'].includes(this.p.action))return false;if(this.player.potions<=0){this.toast('药剂用完了');return false;}if(this.player.hp>=this.player.maxHp){this.toast('生命已满，无需使用药剂');return false;}this.p.action='potion';this.p.timer=.55;this.p.elapsed=0;this.p.queue=false;return true;}
+  potion(){if(!this.canAct()||!['idle','block'].includes(this.p.action))return false;if(this.player.potions<=0){this.toast('药剂用完了');return false;}if(this.player.hp>=this.player.maxHp){this.toast('生命已满，无需使用药剂');return false;}this.p.action='potion';this.p.timer=.4;this.p.elapsed=0;this.p.queue=false;return true;}
   hitPlayer(raw,blockable=true,source=null,projectile=false,training=false){
     if(!training&&(this.p.invincible>0||this.player.hp<=0||this.s.run.won))return 'immune';
     if(this.p.action==='block'&&blockable){
@@ -182,7 +186,7 @@ export class Game {
     const dealt=Math.max(1,Math.floor(raw-PLAYER.defense));this.player.hp=Math.max(0,this.player.hp-dealt);this.p.invincible=.5;
     if(this.p.action!=='stunned'){this.p.action='hurt';this.p.timer=raw>=20?.8:.25;if(raw>=20)this.p.invincible=.8;}
     this.p.queue=false;this.sound('hurt');this.emit('shake',{strength:7});this.emit('vibrate',{duration:35});this.float(this.player,'−'+dealt,'#f29d96');
-    if(source){const dx=this.player.x-source.x,dy=this.player.y-source.y,d=Math.hypot(dx,dy)||1;this.player.x=clamp(this.player.x+dx/d*22,45,this.worldWidth-45);this.player.y=clamp(this.player.y+dy/d*16,200,440);}
+    if(source){const bounds=this.bounds(),dx=this.player.x-source.x,dy=this.player.y-source.y,d=Math.hypot(dx,dy)||1;this.player.x=clamp(this.player.x+dx/d*22,45,this.worldWidth-45);this.player.y=clamp(this.player.y+dy/d*16,bounds.minY,bounds.maxY);}
     if(this.player.hp<=0)this.fail();return 'hit';
   }
   float(at,text,color){this.effects.push({type:'text',x:at.x,y:at.y-60,text,color,t:1.1});}
@@ -248,8 +252,10 @@ export class Game {
       if(a.timer<=0){const old=a.action,queued=a.queue;a.action='idle';a.queue=false;if(old==='attack'){a.lastCombo=this.time;if(queued)this.attack();}if(old==='potion'&&p.potions>0){p.potions--;p.hp=Math.min(p.maxHp,p.hp+35);this.sound('heal');this.float(p,'+35','#a9d7b3');this.save();}}
     }
     if(a.action==='idle'&&this.input.block)this.block(true);
-    if(['idle','block'].includes(a.action)){let {x,y}=this.input,d=Math.hypot(x,y);if(d>1){x/=d;y/=d;}if(Math.abs(x)>.05)p.facing=x>0?1:-1;const speed=(a.action==='block'?.35:1)*PLAYER.speed;p.x+=x*speed*dt;p.y+=y*speed*.75*dt;}
-    p.x=clamp(p.x,45,this.worldWidth-45);p.y=clamp(p.y,205,440);
+    // 攻击命中后与喝药期间保留部分机动力：不再把人完全钉住，只降低移动速度。
+    const recovering=a.action==='attack'&&a.elapsed>=COMBO[a.combo].impact;
+    if(['idle','block','potion'].includes(a.action)||recovering){let {x,y}=this.input,d=Math.hypot(x,y);if(d>1){x/=d;y/=d;}if(Math.abs(x)>.05&&!recovering)p.facing=x>0?1:-1;const mobility=a.action==='block'?.35:a.action==='potion'?.45:recovering?.5:1;const speed=mobility*PLAYER.speed;p.x+=x*speed*dt;p.y+=y*speed*.75*dt;}
+    const bounds=this.bounds();p.x=clamp(p.x,45,this.worldWidth-45);p.y=clamp(p.y,bounds.minY,bounds.maxY);
     if(this.s.scene==='dungeon'){
       for(const e of [...this.s.enemies]){this.updateEnemy(e,dt);if(this.dialog||this.s.scene!=='dungeon')break;}
       if(this.s.scene==='dungeon'&&!this.dialog){
@@ -258,7 +264,7 @@ export class Game {
         this.s.enemies=this.s.enemies.filter(e=>e.hp>0);
         if(!this.s.enemies.length&&!this.s.run.clear)this.clearRoom();
         // Soft separation uses collision radii, independent of the visual sprite.
-        for(const e of this.s.enemies){if(e.state==='windup'||a.action==='dodge')continue;const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy),min=e.kind==='boss'?45:30;if(d<min){const nx=d>0?dx/d:p.facing,ny=d>0?dy/d:0;p.x=clamp(p.x+nx*(min-d)*.5,45,this.worldWidth-45);p.y=clamp(p.y+ny*(min-d)*.5,205,440);}}
+        for(const e of this.s.enemies){if(e.state==='windup'||a.action==='dodge')continue;const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy),min=e.kind==='boss'?45:30;if(d<min){const nx=d>0?dx/d:p.facing,ny=d>0?dy/d:0;p.x=clamp(p.x+nx*(min-d)*.5,45,this.worldWidth-45);p.y=clamp(p.y+ny*(min-d)*.5,bounds.minY,bounds.maxY);}}
       }
     }else if(this.s.tutorial.active){
       const t=this.s.tutorial;if(t.hits>=3&&t.combo>=1&&t.dodges>=2){this.trainingClock-=dt;if(this.trainingClock<=1.2&&this.trainingClock>0)this.trainingTell=this.trainingClock;else this.trainingTell=0;

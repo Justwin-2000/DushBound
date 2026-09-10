@@ -130,6 +130,10 @@
     get worldWidth() {
       return this.s.scene === "town" ? 7300 : 1520;
     }
+    // 小镇的路面在 y=344..426、地平面自 310 起；原先 205 的下限会让角色走到山峦与天空里。
+    bounds() {
+      return this.s.scene === "town" ? { minY: 325, maxY: 450 } : { minY: 205, maxY: 440 };
+    }
     emit(type, data = {}) {
       this.events.push(__spreadValues({ type }, data));
     }
@@ -619,7 +623,7 @@
     dodge() {
       if (!this.canAct() || this.p.dodgeCooldown > 0) return false;
       const a = this.p.action;
-      if (!["idle", "block", "attack", "potion"].includes(a) || a === "attack" && this.p.elapsed < COMBO[this.p.combo].duration * 0.5) return false;
+      if (!["idle", "block", "attack", "potion"].includes(a) || a === "attack" && this.p.elapsed < COMBO[this.p.combo].impact) return false;
       if (!this.spend(24)) return false;
       let { x, y } = this.input, n = Math.hypot(x, y);
       if (n < 0.1) {
@@ -648,7 +652,8 @@
         if (this.p.action === "block") this.p.action = "idle";
         return;
       }
-      if (!this.canAct() || !["idle", "block"].includes(this.p.action) || this.player.stamina <= 0) return;
+      const recovering = this.p.action === "attack" && this.p.elapsed >= COMBO[this.p.combo].impact;
+      if (!this.canAct() || !recovering && !["idle", "block"].includes(this.p.action) || this.player.stamina <= 0) return;
       if (this.p.action !== "block") {
         this.p.action = "block";
         this.p.blockAge = 0;
@@ -665,7 +670,7 @@
         return false;
       }
       this.p.action = "potion";
-      this.p.timer = 0.55;
+      this.p.timer = 0.4;
       this.p.elapsed = 0;
       this.p.queue = false;
       return true;
@@ -741,9 +746,9 @@
       this.emit("vibrate", { duration: 35 });
       this.float(this.player, "−" + dealt, "#f29d96");
       if (source) {
-        const dx = this.player.x - source.x, dy = this.player.y - source.y, d = Math.hypot(dx, dy) || 1;
+        const bounds = this.bounds(), dx = this.player.x - source.x, dy = this.player.y - source.y, d = Math.hypot(dx, dy) || 1;
         this.player.x = clamp(this.player.x + dx / d * 22, 45, this.worldWidth - 45);
-        this.player.y = clamp(this.player.y + dy / d * 16, 200, 440);
+        this.player.y = clamp(this.player.y + dy / d * 16, bounds.minY, bounds.maxY);
       }
       if (this.player.hp <= 0) this.fail();
       return "hit";
@@ -983,19 +988,22 @@
         }
       }
       if (a.action === "idle" && this.input.block) this.block(true);
-      if (["idle", "block"].includes(a.action)) {
+      const recovering = a.action === "attack" && a.elapsed >= COMBO[a.combo].impact;
+      if (["idle", "block", "potion"].includes(a.action) || recovering) {
         let { x, y } = this.input, d = Math.hypot(x, y);
         if (d > 1) {
           x /= d;
           y /= d;
         }
-        if (Math.abs(x) > 0.05) p.facing = x > 0 ? 1 : -1;
-        const speed = (a.action === "block" ? 0.35 : 1) * PLAYER.speed;
+        if (Math.abs(x) > 0.05 && !recovering) p.facing = x > 0 ? 1 : -1;
+        const mobility = a.action === "block" ? 0.35 : a.action === "potion" ? 0.45 : recovering ? 0.5 : 1;
+        const speed = mobility * PLAYER.speed;
         p.x += x * speed * dt;
         p.y += y * speed * 0.75 * dt;
       }
+      const bounds = this.bounds();
       p.x = clamp(p.x, 45, this.worldWidth - 45);
-      p.y = clamp(p.y, 205, 440);
+      p.y = clamp(p.y, bounds.minY, bounds.maxY);
       if (this.s.scene === "dungeon") {
         for (const e of [...this.s.enemies]) {
           this.updateEnemy(e, dt);
@@ -1021,7 +1029,7 @@
             if (d < min) {
               const nx = d > 0 ? dx / d : p.facing, ny = d > 0 ? dy / d : 0;
               p.x = clamp(p.x + nx * (min - d) * 0.5, 45, this.worldWidth - 45);
-              p.y = clamp(p.y + ny * (min - d) * 0.5, 205, 440);
+              p.y = clamp(p.y + ny * (min - d) * 0.5, bounds.minY, bounds.maxY);
             }
           }
         }
@@ -1669,14 +1677,18 @@
         c.scale(p.facing, 1);
         const angle = -1.15 + a.elapsed / (a.combo === 2 ? 0.62 : 0.4) * 2.7;
         c.rotate(angle);
-        this.rect(10, -3, 65, 5, "#e9e1c6");
-        this.rect(9, -9, 5, 17, "#b7a26e");
-        this.rect(1, -3, 10, 5, "#705d4b");
         c.strokeStyle = a.combo === 2 ? "#fff0b9" : "#decfad";
-        c.lineWidth = 5;
+        c.globalAlpha = 0.45;
+        c.lineWidth = a.combo === 2 ? 5 : 4;
         c.beginPath();
-        c.arc(0, 0, 83, -0.35, 0.1);
+        c.arc(0, 0, 80, -0.6, -0.06);
         c.stroke();
+        c.globalAlpha = 1;
+        this.poly([[-13, -4], [-13, 4], [-9, 6], [-9, -6]], "#c9a86a");
+        this.rect(-9, -3, 12, 6, "#6d5a49");
+        this.rect(3, -9, 5, 18, "#b7a26e");
+        this.poly([[8, -4.5], [54, -4], [68, 0], [54, 4], [8, 4.5]], "#e9e1c6");
+        this.poly([[8, -4.5], [54, -4], [60, -1.5], [8, -1.5]], "#fffaf0");
         c.restore();
       }
       if (a.action === "block") {
@@ -1856,7 +1868,10 @@
           if (!g) return;
           if (action === "block") g.block(true);
           else g[action]();
-          if (action === "attack") this.attackHeld = true;
+          if (action === "attack") {
+            this.attackHeld = true;
+            this.attackTimer = 0.3;
+          }
         });
         const up = () => {
           var _a2;
@@ -1884,6 +1899,7 @@
         if (key === "j" || key === " ") {
           g.attack();
           this.attackHeld = true;
+          this.attackTimer = 0.3;
         }
         if (key === "k") g.dodge();
         if (key === "l") g.block(true);
@@ -1918,7 +1934,7 @@
       g.input.y = this.stick.y + has("s") + has("arrowdown") - has("w") - has("arrowup");
       this.attackTimer -= dt;
       if (this.attackHeld && this.attackTimer <= 0) {
-        this.attackTimer = 0.12;
+        this.attackTimer = 0.18;
         g.attack();
       }
     }
@@ -1990,8 +2006,8 @@
       this.next = this.ctx.currentTime + (scene === "boss" ? 0.48 : 1.1);
       const scales = scene === "title" ? [220, 261.63, 329.63, 293.66, 220, 196, 164.81, 196] : scene === "town" ? [261.63, 329.63, 392, 329.63, 293.66, 220, 261.63, 196] : scene === "boss" ? [110, 130.81, 110, 155.56, 146.83, 130.81, 98, 110] : [164.81, 196, 220, 196, 164.81, 146.83, 130.81, 146.83];
       const freq = scales[this.note++ % scales.length];
-      this.tone(freq, 2.5, this.settings.music * 0.065);
-      this.tone(freq / 2, 3, this.settings.music * 0.032, "triangle");
+      this.tone(freq, 2.5, this.settings.music * 0.1);
+      this.tone(freq / 2, 3, this.settings.music * 0.05, "triangle");
     }
     suspend() {
       var _a2;

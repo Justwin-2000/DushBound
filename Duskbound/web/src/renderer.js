@@ -110,7 +110,17 @@ export class Renderer {
   hero(g){const p=g.player,a=g.p,c=this.c;if(a.invincible>0&&Math.floor(g.time*18)%2===0)c.globalAlpha=.6;
     if(a.action==='dodge'){c.globalAlpha=.35;this.human(p.x-a.dx*26,p.y-a.dy*20,'#637888',g.time,true,'hero',p.facing);c.globalAlpha=.8;}
     this.human(p.x,p.y,'#415464',g.time,Math.hypot(g.input.x,g.input.y)>.1&&a.action==='idle','hero',p.facing,a.action);c.globalAlpha=1;
-    if(a.action==='attack'){c.save();c.translate(p.x,p.y-28);c.scale(p.facing,1);const angle=-1.15+a.elapsed/(a.combo===2?.62:.4)*2.7;c.rotate(angle);this.rect(10,-3,65,5,'#e9e1c6');this.rect(9,-9,5,17,'#b7a26e');this.rect(1,-3,10,5,'#705d4b');c.strokeStyle=a.combo===2?'#fff0b9':'#decfad';c.lineWidth=5;c.beginPath();c.arc(0,0,83,-.35,.1);c.stroke();c.restore();}
+    if(a.action==='attack'){c.save();c.translate(p.x,p.y-28);c.scale(p.facing,1);const angle=-1.15+a.elapsed/(a.combo===2?.62:.4)*2.7;c.rotate(angle);
+      // 挥砍残影：半径明显大于剑尖、弧度短，避免与剑身连成一把镰刀。
+      c.strokeStyle=a.combo===2?'#fff0b9':'#decfad';c.globalAlpha=.45;c.lineWidth=a.combo===2?5:4;c.beginPath();c.arc(0,0,80,-.6,-.06);c.stroke();c.globalAlpha=1;
+      // 剑：刃身根部宽、向剑尖收窄并带刃口高光，配护手与剑首。
+      // 之前「等宽长条 + 垂直横杠」的轮廓就是被读成锄头的原因。
+      this.poly([[-13,-4],[-13,4],[-9,6],[-9,-6]],'#c9a86a');
+      this.rect(-9,-3,12,6,'#6d5a49');
+      this.rect(3,-9,5,18,'#b7a26e');
+      this.poly([[8,-4.5],[54,-4],[68,0],[54,4],[8,4.5]],'#e9e1c6');
+      this.poly([[8,-4.5],[54,-4],[60,-1.5],[8,-1.5]],'#fffaf0');
+      c.restore();}
     if(a.action==='block'){c.save();c.strokeStyle=a.blockAge<=.18?'#f8e5ad':'#a9c8cf';c.lineWidth=4;c.beginPath();c.ellipse(p.x+p.facing*21,p.y-29,12,27,0,0,Math.PI*2);c.stroke();c.restore();}
     if(a.action==='potion'){this.rect(p.x+17,p.y-47,8,13,'#cda294');this.glow(p.x,p.y-25,45,'#87cca23b');}
   }
