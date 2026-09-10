@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const output = fileURLToPath(new URL('./output/', import.meta.url));
 mkdirSync(output, { recursive: true });
-const report = { testedAt: new Date().toISOString(), browser: 'Microsoft Edge headless / Playwright', origin: 'http://localhost:4173/prologue.html', scenarios: [], errors: [], layouts: [], warnings: [] };
+const report = { testedAt: new Date().toISOString(), browser: 'Microsoft Edge headless / Playwright', origin: 'http://localhost:4173/index.html', scenarios: [], errors: [], layouts: [], warnings: [] };
 const browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
 function monitor(page, name) {
   page.setDefaultTimeout(12000);

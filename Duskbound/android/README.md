@@ -13,7 +13,7 @@ pnpm install --frozen-lockfile
 ./android/test-save-codec.ps1
 ```
 
-默认构建先用 Node.js 和 esbuild 编译两个 Web 入口，再从项目的 `web/index.html` 打包资源，输出名称读取 AndroidManifest.xml 的 versionName（当前为 `releases/暮边镇-1.1.0.apk`），同时生成 SHA-256 和签名、Manifest 验证报告。原生编译使用 JDK 17、Android SDK Platform 35、Build Tools 35，不依赖 Gradle 或 Maven。工具解压在项目上级的 `.tooling`，不写入系统环境变量。下载地址与校验哈希固定在安装脚本中。
+默认构建先用 Node.js 和 esbuild 编译统一 Web 入口，再从项目的 `web/index.html` 打包资源，输出名称读取 AndroidManifest.xml 的 versionName（当前为 `releases/暮边镇-1.1.1.apk`），同时生成 SHA-256 和签名、Manifest 验证报告。原生编译使用 JDK 17、Android SDK Platform 35、Build Tools 35，不依赖 Gradle 或 Maven。工具解压在项目上级的 `.tooling`，不写入系统环境变量。下载地址与校验哈希固定在安装脚本中。
 
 如果已有符合要求的工具，可以通过 `-ToolingRoot` 指定包含 `jdk17`、`android-platform`、`android-build-tools` 三个目录的路径；通过 `-AssetDirectory` 指定资源目录。`-Placeholder` 仅用于先验证原生外壳，生成单独的 `duskbound-shell-check.apk`，不覆盖游戏 APK。
 
@@ -21,7 +21,7 @@ pnpm install --frozen-lockfile
 
 ## Web 与原生约定
 
-- 主页为 `https://appassets.androidplatform.net/assets/index.html`，序章为同源 `prologue.html`；两个精确入口都支持启动握手、导入与生命周期。由 WebViewClient 从 APK assets 拦截提供，没有真实网络请求。资源使用相对路径。
+- 主页为 `https://appassets.androidplatform.net/assets/index.html`，统一加载第一版玩法。历史 `prologue.html` 地址自动转到主页；导入、启动握手与生命周期沿用同一主入口。由 WebViewClient 从 APK assets 拦截提供，没有真实网络请求。资源使用相对路径。
 - 入口脚本完成初始化、事件绑定及首帧准备后必须调用 `window.AndroidBridge.gameReady()`。HTML 加载完成不会被当成游戏就绪；未握手前暂不派发导入文件。
 - 原生 WebChromeClient 捕捉第一个控制台 ERROR，`window.AndroidBridge.startupError(message)` 也可报告早期错误。前台等待 12 秒仍未收到握手时，显示独立于 JavaScript 的原生诊断页：应用、Android、系统 WebView 版本、首个脚本/资源错误和重新加载按钮。诊断仅保留在内存并本机显示，不写文件、不上传。返回前台会重新开始等待。
 - 资源禁用缓存，防止覆盖升级后重复使用旧入口；重新加载不清除 localStorage，离线 origin 和签名保持不变。

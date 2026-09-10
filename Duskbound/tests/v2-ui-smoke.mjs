@@ -1,3 +1,8 @@
+// Historical 1.1.0 sample test. The sample is no longer a release entry in 1.1.1.
+if (JSON.parse((await import('node:fs')).readFileSync(new URL('../package.json',import.meta.url),'utf8')).version !== '1.1.0') {
+ console.log('SKIP: retired 1.1.0 sample UI; run unified-entry-smoke.mjs for the current release.');
+ process.exit(0);
+}
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'file:///C:/Users/admin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';

@@ -9,7 +9,7 @@ import { decodeSave } from '../web/src/store.js';
 const webRoot = fileURLToPath(new URL('../web/', import.meta.url));
 const output = fileURLToPath(new URL('./output/', import.meta.url));
 const origin = 'https://appassets.androidplatform.net';
-const entry = origin + '/assets/prologue.html';
+const entry = origin + '/assets/index.html';
 mkdirSync(output, { recursive: true });
 const report = {
   testedAt: new Date().toISOString(),
@@ -164,7 +164,7 @@ try {
     assert.deepEqual(report.rejectedRequests, []);
     assert.deepEqual(report.errors, []);
     assert.equal(await page.locator('#fatal').isVisible(), false);
-    for (const asset of ['prologue.html', 'style.css', 'compat.js', 'prologue.bundle.js', 'assets/title.webp', 'assets/world.webp']) assert.ok(report.requests.some(request => request.url === origin + '/assets/' + asset), 'Expected packaged resource not requested: ' + asset);
+    for (const asset of ['index.html', 'style.css', 'compat.js', 'app.bundle.js', 'assets/title.webp', 'assets/world.webp']) assert.ok(report.requests.some(request => request.url === origin + '/assets/' + asset), 'Expected packaged resource not requested: ' + asset);
   });
 } catch (error) {
   process.exitCode = 1;
